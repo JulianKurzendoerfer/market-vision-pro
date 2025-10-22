@@ -1,215 +1,133 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from typing import List, Dict, Any
 import pandas as pd
 import numpy as np
-import io, re, requests, datetime as dt
+import requests
 import yfinance as yf
 
-app = FastAPI(title="Market Vision Pro API", version="1.0")
-
+app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"],
 )
 
-# ---------- helpers
+def _clean_ticker(s: str) -> str:
+    return (s or "").strip()
 
-def _clean_ticker(t: str) -> str:
-    t = (t or "").strip()
-    # TradingView-Stil in YF umbiegen (ein paar häufige Fälle)
-    if ":" in t:
-        exch, base = t.split(":", 1)
-        exch = exch.upper(); base = base.upper()
-        if exch in {"NASDAQ","NYSE","AMEX"}:
-            return base
-        mapping = {
-            "TVC:SPX": "^GSPC",
-            "TVC:NDQ": "^NDX",
-            "TVC:DEU40": "^GDAXI",
-            "TVC:DJI": "^DJI",
-            "TVC:VIX": "^VIX",
-            "FX:EURUSD": "EURUSD=X",
-            "OANDA:XAUUSD": "XAUUSD=X",
-            "NYMEX:CL1!": "CL=F",
-        }
-        return mapping.get(f"{exch}:{base}", base)
-    return t.upper()
+def _period_to_days(period: str) -> int:
+    m = {
+        "3m": 90, "6m": 180, "1y": 365, "2y": 730, "5y": 1825,
+        "max": 3650
+    }
+    return m.get(period, 365)
 
-def _stooq_candidates(sym: str):
-    s = sym.lower()
-    cands = [s]
-    if not s.endswith(".us") and re.fullmatch(r"[a-z0-9\.\-^]+", s):
-        cands.append(f"{s}.us")
-    if s.startswith("^"):
-        cands.append(s[1:])       # ^spx -> spx
-        cands.append(f"{s[1:]}.us")
-    # dedupe, keep order
-    out, seen = [], set()
-    for x in cands:
-        if x not in seen:
-            out.append(x); seen.add(x)
-    return out
-
-def _fetch_stooq(ticker: str, interval: str) -> pd.DataFrame | None:
-    itv_map = {"1d":"d", "1wk":"w", "1mo":"m"}
-    if interval not in itv_map:
-        return None  # Stooq liefert kein 1h
-    i = itv_map[interval]
-    for sym in _stooq_candidates(ticker):
-        url = f"https://stooq.com/q/d/l/?s={sym}&i={i}"
-        try:
-            r = requests.get(url, timeout=10)
-            if r.status_code != 200 or "Date,Open,High,Low,Close,Volume" not in r.text:
-                continue
-            df = pd.read_csv(io.StringIO(r.text))
-            if df.empty:
-                continue
-            df["Date"] = pd.to_datetime(df["Date"])
-            df = df.rename(columns=str.title).rename(columns={"Date":"Datetime"})
-            df = df.sort_values("Datetime").set_index("Datetime")
-            df = df[["Open","High","Low","Close","Volume"]].dropna()
-            if len(df) >= 50:
-                return df
-        except Exception:
-            continue
-    return None
-
-def _fetch_yf(ticker: str, interval: str) -> pd.DataFrame | None:
-    # kurze, robuste History je nach Intervall
-    per = {"1h":"730d", "1d":"5y", "1wk":"20y"}.get(interval, "5y")
-    try:
-        df = yf.download(ticker, period=per, interval=interval, auto_adjust=True, progress=False)
-        if df is None or df.empty: 
-            return None
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = [c[0] for c in df.columns]
-        df = df.rename_axis("Datetime").sort_index()
-        # yfinance liefert manchmal ein letztes unvollständiges Bar – optional trimmen
-        return df[["Open","High","Low","Close","Volume"]].dropna()
-    except Exception:
-        return None
-
-def _fetch_ohlcv(ticker: str, interval: str) -> pd.DataFrame:
-    t = _clean_ticker(ticker)
-    df = _fetch_stooq(t, interval)
-    if df is None:
-        df = _fetch_yf(t, interval)
-    if df is None or df.empty:
-        raise RuntimeError("no_data")
+def _fetch_stooq_daily(ticker: str, days: int) -> pd.DataFrame:
+    st = ticker.lower()
+    url = f"https://stooq.com/q/d/l/?s={st}&i=d"
+    r = requests.get(url, timeout=15)
+    if r.status_code != 200 or "Date,Open,High,Low,Close" not in r.text:
+        return pd.DataFrame()
+    df = pd.read_csv(pd.compat.StringIO(r.text))
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.rename(columns={"Date":"Datetime","Open":"Open","High":"High","Low":"Low","Close":"Close"})
+    df = df.dropna()
+    df = df.tail(days+5)
+    df["Volume"] = np.nan
+    df = df.set_index("Datetime").sort_index()
     return df
 
-# ---------- indicators (kompakt & schnell)
+def _fetch_yf(ticker: str, interval: str, period: str) -> pd.DataFrame:
+    kwargs = dict(interval=interval, auto_adjust=True, progress=False)
+    if period:
+        kwargs["period"] = period
+    df = yf.download(_clean_ticker(ticker), **kwargs)
+    if df is None or len(df) == 0:
+        return pd.DataFrame()
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = [c[0] for c in df.columns]
+    df = df.dropna()
+    df.index = pd.to_datetime(df.index)
+    return df
 
-def _ema(s: pd.Series, span: int) -> pd.Series:
+def fetch_bars(ticker: str, interval: str, period: str) -> pd.DataFrame:
+    if interval == "1d":
+        d = _period_to_days(period or "1y")
+        df = _fetch_stooq_daily(ticker, d)
+        if len(df) >= 50:
+            return df
+    return _fetch_yf(ticker, interval or "1d", period or "1y")
+
+def ema(s: pd.Series, span: int) -> pd.Series:
     return s.ewm(span=span, adjust=False).mean()
 
-def _rsi_wilder(close: pd.Series, period=14) -> pd.Series:
-    d = close.diff()
-    up = d.clip(lower=0.0)
-    dn = -d.clip(upper=0.0)
-    au = up.ewm(alpha=1/period, adjust=False).mean()
-    ad = dn.ewm(alpha=1/period, adjust=False).mean()
-    rs = au / ad.replace(0, np.nan)
-    rsi = 100 - 100/(1+rs)
+def macd(close: pd.Series, fast=12, slow=26, signal=9):
+    line = ema(close, fast) - ema(close, slow)
+    sig = ema(line, signal)
+    hist = line - sig
+    return line, sig, hist
+
+def rsi_wilder(close: pd.Series, period=14):
+    delta = close.diff()
+    up = delta.clip(lower=0)
+    down = -delta.clip(upper=0)
+    avg_gain = up.ewm(alpha=1/period, adjust=False).mean()
+    avg_loss = down.ewm(alpha=1/period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - 100 / (1 + rs)
     return rsi.clip(0, 100)
 
-def _stoch(high, low, close, k=14, smooth=3, d=3):
-    hh = high.rolling(k, min_periods=k).max()
-    ll = low.rolling(k, min_periods=k).min()
-    rawk = 100*(close-ll)/(hh-ll).replace(0, np.nan)
-    kline = rawk.rolling(smooth, min_periods=smooth).mean()
-    dline = kline.rolling(d, min_periods=d).mean()
-    return kline.clip(0,100), dline.clip(0,100)
+def stochastic_full(high, low, close, k_period=14, k_smooth=3, d_period=3):
+    hh = high.rolling(k_period, min_periods=k_period).max()
+    ll = low.rolling(k_period, min_periods=k_period).min()
+    raw_k = 100 * (close - ll) / (hh - ll).replace(0, np.nan)
+    k = raw_k.rolling(k_smooth, min_periods=k_smooth).mean()
+    d = k.rolling(d_period, min_periods=d_period).mean()
+    return k.clip(0,100), d.clip(0,100)
 
-def _stoch_rsi(close, period=14, k=3, d=3):
-    r = _rsi_wilder(close, period)
+def stoch_rsi(close, period=14, k=3, d=3):
+    r = rsi_wilder(close, period)
     rmin = r.rolling(period, min_periods=period).min()
     rmax = r.rolling(period, min_periods=period).max()
-    sr = 100*(r - rmin)/(rmax-rmin).replace(0, np.nan)
+    sr = 100 * (r - rmin) / (rmax - rmin).replace(0, np.nan)
     kline = sr.rolling(k, min_periods=k).mean()
     dline = kline.rolling(d, min_periods=d).mean()
     return kline.clip(0,100), dline.clip(0,100)
 
-def _macd(close, f=12, s=26, sig=9):
-    macd = _ema(close, f) - _ema(close, s)
-    signal = _ema(macd, sig)
-    hist = macd - signal
-    return macd, signal, hist
+def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["EMA9"] = ema(out["Close"], 9)
+    out["EMA21"] = ema(out["Close"], 21)
+    out["EMA50"] = ema(out["Close"], 50)
+    sma20 = out["Close"].rolling(20, min_periods=20).mean()
+    std20 = out["Close"].rolling(20, min_periods=20).std()
+    out["BB_basis"] = sma20
+    out["BB_upper"] = sma20 + 2*std20
+    out["BB_lower"] = sma20 - 2*std20
+    out["RSI"] = rsi_wilder(out["Close"], 14)
+    ml, ms, mh = macd(out["Close"], 12, 26, 9)
+    out["MACD"], out["MACD_sig"], out["MACD_hist"] = ml, ms, mh
+    k, d = stochastic_full(out["High"], out["Low"], out["Close"], 14, 3, 3)
+    out["STO_K"], out["STO_D"] = k, d
+    sk, sd = stoch_rsi(out["Close"], 14, 3, 3)
+    out["STO_RSI_K"], out["STO_RSI_D"] = sk, sd
+    return out
 
-def _bollinger(close, n=20, k=2.0):
-    m = close.rolling(n, min_periods=n).mean()
-    sd = close.rolling(n, min_periods=n).std()
-    return m, m + k*sd, m - k*sd
+def pivots_close(df: pd.DataFrame, window: int = 8):
+    c = df["Close"].values
+    n = len(c)
+    if n < 2*window+1:
+        return []
+    piv = []
+    for i in range(window, n-window):
+        seg = c[i-window:i+window+1]
+        if np.argmax(seg) == window:
+            piv.append({"i": i, "type": "high"})
+        elif np.argmin(seg) == window:
+            piv.append({"i": i, "type": "low"})
+    return piv
 
-def _trend_strength(close: pd.Series, lookback=60):
-    if close.isna().sum() > 0:
-        close = close.dropna()
-    if len(close) < lookback+5:
-        return "range", 0.0, 0.0
-    y = close.tail(lookback).values.astype(float)
-    x = np.arange(len(y))
-    xm, ym = x.mean(), y.mean()
-    cov = ((x-xm)*(y-ym)).sum()
-    varx = ((x-xm)**2).sum()
-    if varx == 0:
-        return "range", 0.0, 0.0
-    slope = cov/varx
-    r = cov / (np.sqrt(varx) * np.sqrt(((y-ym)**2).sum()) + 1e-9)
-    r2 = float(r*r)
-    norm_slope = slope / max(1e-9, abs(ym))
-    if norm_slope*lookback > 0.05 and r2 > 0.30:
-        return ("up" if slope>0 else "down"), float(abs(norm_slope)*lookback), r2
-    return "range", float(abs(norm_slope)*lookback), r2
-
-# ---------- API
-
-@app.get("/v1/indicators")
-def indicators(
-    ticker: str = Query(..., description="Symbol, z.B. AAPL"),
-    interval: str = Query("1d", pattern="^(1h|1d|1wk)$")
-):
-    try:
-        df = _fetch_ohlcv(ticker, interval)
-        # kompaktes Window für die Kennzahlen
-        tail = df.tail(300).copy()
-
-        close = tail["Close"]; high = tail["High"]; low = tail["Low"]
-
-        ema9  = _ema(close, 9);  ema21 = _ema(close, 21); ema50 = _ema(close, 50)
-        bb_m, bb_u, bb_l = _bollinger(close, 20, 2.0)
-
-        k, d = _stoch(high, low, close, 14, 3, 3)
-        sr_k, sr_d = _stoch_rsi(close, 14, 3, 3)
-        rsi = _rsi_wilder(close, 14)
-        macd, macds, macdh = _macd(close, 12, 26, 9)
-
-        tdir, tstr, r2 = _trend_strength(_ema(close, 50), 60)
-
-        boxes = [
-            {"id":"box1","label":"Price + BB + EMA(9/21/50)",
-             "value": float(close.iloc[-1]),
-             "extras":{
-                 "ema9": float(ema9.iloc[-1]), "ema21": float(ema21.iloc[-1]), "ema50": float(ema50.iloc[-1]),
-                 "bb_upper": float(bb_u.iloc[-1]), "bb_lower": float(bb_l.iloc[-1])
-             }},
-            {"id":"box2","label":"Stochastic (14,3,3)",
-             "value": float(k.iloc[-1]),
-             "extras":{"%K": float(k.iloc[-1]), "%D": float(d.iloc[-1])}},
-            {"id":"box3","label":"Stoch RSI (14,3,3)",
-             "value": float(sr_k.iloc[-1]),
-             "extras":{"%K": float(sr_k.iloc[-1]), "%D": float(sr_d.iloc[-1])}},
-            {"id":"box4","label":"RSI (14)","value": float(rsi.iloc[-1])},
-            {"id":"box5","label":"MACD (12,26,9)",
-             "value": float(macd.iloc[-1]),
-             "extras":{"signal": float(macds.iloc[-1]), "hist": float(macdh.iloc[-1])}},
-            {"id":"box6","label":"Trend",
-             "value": tdir, "extras":{"strength": tstr, "r2": float(r2)}},
-        ]
-
-        return {"ok": True, "ticker": _clean_ticker(ticker).upper(), "interval": interval, "boxes": boxes}
-    except Exception as e:
-        return {"ok": False, "error": str(e), "ticker": ticker, "interval": interval}
 @app.get("/")
 def root():
     return {"ok": True, "service": "mvp-api"}
@@ -217,3 +135,85 @@ def root():
 @app.get("/health")
 def health():
     return {"ok": True}
+
+@app.get("/v1/indicators")
+def indicators(ticker: str = Query("AAPL"), interval: str = Query("1d")):
+    try:
+        df = fetch_bars(ticker, interval, "1y")
+        df = compute_indicators(df)
+        last = df.iloc[-1]
+        last_close = float(last["Close"])
+        emap9 = float(df["EMA9"].iloc[-1]) if not np.isnan(df["EMA9"].iloc[-1]) else None
+        emap21 = float(df["EMA21"].iloc[-1]) if not np.isnan(df["EMA21"].iloc[-1]) else None
+        emap50 = float(df["EMA50"].iloc[-1]) if not np.isnan(df["EMA50"].iloc[-1]) else None
+        bb_u = float(df["BB_upper"].iloc[-1]) if not np.isnan(df["BB_upper"].iloc[-1]) else None
+        bb_l = float(df["BB_lower"].iloc[-1]) if not np.isnan(df["BB_lower"].iloc[-1]) else None
+        rsi = float(last["RSI"]) if not np.isnan(last["RSI"]) else None
+        k = float(last["STO_K"]) if not np.isnan(last["STO_K"]) else None
+        d = float(last["STO_D"]) if not np.isnan(last["STO_D"]) else None
+        srk = float(last["STO_RSI_K"]) if not np.isnan(last["STO_RSI_K"]) else None
+        srd = float(last["STO_RSI_D"]) if not np.isnan(last["STO_RSI_D"]) else None
+        mline = float(last["MACD"]) if not np.isnan(last["MACD"]) else None
+        msig = float(last["MACD_sig"]) if not np.isnan(last["MACD_sig"]) else None
+        trend_dir = "up" if (df["EMA50"].iloc[-1] - df["EMA50"].iloc[-20]) > 0 else "down"
+        boxes = [
+            {"id":"box1","label":"Price + BB + EMA(9/21/50)","value": last_close, "extras":{"ema9":emap9,"ema21":emap21,"ema50":emap50,"bb_upper":bb_u,"bb_lower":bb_l}},
+            {"id":"box2","label":"Stochastic (14,3,3)","value": k, "extras":{"%D": d}},
+            {"id":"box3","label":"Stoch RSI (14,3,3)","value": srk, "extras":{"%D": srd}},
+            {"id":"box4","label":"RSI (14)","value": rsi},
+            {"id":"box5","label":"MACD (12,26,9)","value": mline, "extras":{"signal": msig, "hist": float(last["MACD_hist"]) if not np.isnan(last["MACD_hist"]) else None}},
+            {"id":"box6","label":"Trend","value": trend_dir}
+        ]
+        return {"ok": True, "ticker": _clean_ticker(ticker).upper(), "interval": interval, "boxes": boxes}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@app.get("/v1/chart")
+def chart(
+    ticker: str = Query("AAPL"),
+    interval: str = Query("1d"),
+    period: str = Query("1y")
+):
+    try:
+        df = fetch_bars(ticker, interval, period)
+        df = compute_indicators(df)
+        piv = pivots_close(df, window=8)
+
+        t = (df.index.view("int64") // 10**6).astype(int).tolist()
+        o = df["Open"].astype(float).round(6).tolist()
+        h = df["High"].astype(float).round(6).tolist()
+        l = df["Low"].astype(float).round(6).tolist()
+        c = df["Close"].astype(float).round(6).tolist()
+        v = (df["Volume"] if "Volume" in df.columns else pd.Series(index=df.index, data=np.nan)).astype(float).tolist()
+
+        payload = {
+            "ok": True,
+            "ticker": _clean_ticker(ticker).upper(),
+            "interval": interval,
+            "period": period,
+            "ohlc": {
+                "t": t, "open": o, "high": h, "low": l, "close": c, "volume": v
+            },
+            "overlays": {
+                "ema9": df["EMA9"].astype(float).round(6).where(pd.notna(df["EMA9"])).tolist(),
+                "ema21": df["EMA21"].astype(float).round(6).where(pd.notna(df["EMA21"])).tolist(),
+                "ema50": df["EMA50"].astype(float).round(6).where(pd.notna(df["EMA50"])).tolist(),
+                "bb_upper": df["BB_upper"].astype(float).where(pd.notna(df["BB_upper"])).round(6).tolist(),
+                "bb_basis": df["BB_basis"].astype(float).where(pd.notna(df["BB_basis"])).round(6).tolist(),
+                "bb_lower": df["BB_lower"].astype(float).where(pd.notna(df["BB_lower"])).round(6).tolist()
+            },
+            "indicators": {
+                "stoch": {"k": df["STO_K"].astype(float).where(pd.notna(df["STO_K"])).round(6).tolist(),
+                          "d": df["STO_D"].astype(float).where(pd.notna(df["STO_D"])).round(6).tolist()},
+                "stoch_rsi": {"k": df["STO_RSI_K"].astype(float).where(pd.notna(df["STO_RSI_K"])).round(6).tolist(),
+                              "d": df["STO_RSI_D"].astype(float).where(pd.notna(df["STO_RSI_D"])).round(6).tolist()},
+                "rsi": df["RSI"].astype(float).where(pd.notna(df["RSI"])).round(6).tolist(),
+                "macd": {"line": df["MACD"].astype(float).where(pd.notna(df["MACD"])).round(6).tolist(),
+                         "signal": df["MACD_sig"].astype(float).where(pd.notna(df["MACD_sig"])).round(6).tolist(),
+                         "hist": df["MACD_hist"].astype(float).where(pd.notna(df["MACD_hist"])).round(6).tolist()},
+                "trend": {"pivots": piv}
+            }
+        }
+        return payload
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
