@@ -210,3 +210,10 @@ def indicators(
         return {"ok": True, "ticker": _clean_ticker(ticker).upper(), "interval": interval, "boxes": boxes}
     except Exception as e:
         return {"ok": False, "error": str(e), "ticker": ticker, "interval": interval}
+@app.get("/")
+def root():
+    return {"ok": True, "service": "mvp-api"}
+
+@app.get("/health")
+def health():
+    return {"ok": True}
