@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: mvp-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    domains:
+      - api.market-vision-pro.com
+  - type: static
+    name: mvp-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    domains:
+      - tool.market-vision-pro.com
+    envVars:
+      - key: VITE_API_BASE
+        value: https://api.market-vision-pro.com
