@@ -1,139 +1,112 @@
-import Plotly from "plotly.js-dist-min";
-
-const API_BASE = (import.meta as any).env?.VITE_API_BASE?.replace(/\/+$/,"") || "";
-
-const els = {
-  t: document.getElementById("ticker") as HTMLInputElement,
-  interval: document.getElementById("interval") as HTMLSelectElement,
-  period: document.getElementById("period") as HTMLSelectElement,
-  refresh: document.getElementById("refresh") as HTMLButtonElement,
-
-  cCandles: document.getElementById("chart-candles") as HTMLDivElement,
-  cStoch:   document.getElementById("chart-stoch") as HTMLDivElement,
-  cStochR:  document.getElementById("chart-stochrsi") as HTMLDivElement,
-  cRSI:     document.getElementById("chart-rsi") as HTMLDivElement,
-  cMACD:    document.getElementById("chart-macd") as HTMLDivElement,
-  cTrend:   document.getElementById("chart-trend") as HTMLDivElement,
-};
-
 type ChartResp = {
   ok: boolean;
   ticker: string;
-  interval: "1d"|"1h"|"1wk";
-  ohlc: { x:string[]; open:number[]; high:number[]; low:number[]; close:number[] };
-  indicators: {
-    bb_basis:number[]; bb_upper:number[]; bb_lower:number[];
+  interval: "1d"|"1wk";
+  period: string;
+  ohlc?: { x:string[]; open:number[]; high:number[]; low:number[]; close:number[]; volume:(number|null)[] };
+  indicators?: {
     ema9:number[]; ema21:number[]; ema50:number[];
-    stoch_k:number[]; stoch_d:number[];
-    stochrsi_k:number[]; stochrsi_d:number[];
+    bb_upper:number[]; bb_lower:number[]; bb_basis:number[];
     rsi:number[];
-    macd: { line:number[]; signal:number[]; hist:number[] };
-    pivots: { idx:number; type:"high"|"low" }[];
-    trend: { dir:"up"|"down"; strength:number; r2:number };
+    macd:{hist:number[]; line:number[]; signal:number[]};
+    stoch:{k:number[]; d:number[]};
+    trend:{dir:"up"|"down"; strength:number};
   };
+  pivots?: { lows:number[]; highs:number[] };
+  error?: string;
 };
 
-function fmtLayout(h:number, extra:any = {}) {
-  return {
-    margin: {l:48, r:16, t:10, b:20},
-    height: h,
-    xaxis: {showspikes:true, spikedash:"dot", spikethickness:1, showgrid:true, gridcolor:"rgba(0,0,0,0.1)"},
-    yaxis: {showgrid:true, gridcolor:"rgba(0,0,0,0.1)"},
-    showlegend:false,
-    ...extra
-  } as Partial<Plotly.Layout>;
-}
+const API = (window as any).API || (import.meta as any).env?.VITE_API_BASE || "";
+function apiBase(){ return API || ""; }
 
-async function fetchChart(ticker:string, interval:string, period:string): Promise<ChartResp> {
-  const url = `${API_BASE}/v1/chart?ticker=${encodeURIComponent(ticker)}&interval=${interval}&period=${period}`;
-  const r = await fetch(url, {cache:"no-store"});
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
+const el = {
+  t:  document.getElementById("ticker") as HTMLInputElement,
+  i:  document.getElementById("interval") as HTMLSelectElement,
+  p:  document.getElementById("period") as HTMLSelectElement,
+  btn:document.getElementById("refresh") as HTMLButtonElement,
+  cm: document.getElementById("chart-main")!,
+  cst:document.getElementById("chart-stoch")!,
+  csr:document.getElementById("chart-stochrsi")!,
+  rsi:document.getElementById("chart-rsi")!,
+  macd:document.getElementById("chart-macd")!,
+  tr: document.getElementById("chart-trend")!,
+};
 
-async function loadChart() {
-  try {
-    const t = (els.t.value || "AAPL").trim().toUpperCase();
-    const interval = els.interval.value || "1d";
-    const period   = els.period.value || "1y";
-    const data = await fetchChart(t, interval, period);
-
-    const x = data.ohlc.x;
-    const {open, high, low, close} = data.ohlc;
-
-    // Candles + BB + EMAs
-    const tracesTop: Partial<Plotly.PlotData>[] = [
-      {type:"candlestick", x, open, high, low, close, name:"OHLC"},
-      {type:"scatter", mode:"lines", x, y:data.indicators.bb_upper, name:"BB Upper", line:{width:1, dash:"dot"}},
-      {type:"scatter", mode:"lines", x, y:data.indicators.bb_lower, name:"BB Lower", line:{width:1, dash:"dot"}},
-      {type:"scatter", mode:"lines", x, y:data.indicators.bb_basis, name:"BB Basis", line:{width:1, dash:"dot"}},
-      {type:"scatter", mode:"lines", x, y:data.indicators.ema9,  name:"EMA 9",  line:{width:1}},
-      {type:"scatter", mode:"lines", x, y:data.indicators.ema21, name:"EMA 21", line:{width:1}},
-      {type:"scatter", mode:"lines", x, y:data.indicators.ema50, name:"EMA 50", line:{width:1}},
-    ];
-
-    // Pivot-Marker
-    if (Array.isArray(data.indicators.pivots) && data.indicators.pivots.length) {
-      const highs = data.indicators.pivots.filter(p=>p.type==="high").map(p=>p.idx);
-      const lows  = data.indicators.pivots.filter(p=>p.type==="low").map(p=>p.idx);
-      if (highs.length) {
-        tracesTop.push({
-          type:"scatter", mode:"markers", x: highs.map(i=>x[i]), y: highs.map(i=>high[i]),
-          marker:{symbol:"triangle-up", size:12, line:{width:1}}, name:"Highs"
-        });
-      }
-      if (lows.length) {
-        tracesTop.push({
-          type:"scatter", mode:"markers", x: lows.map(i=>x[i]), y: lows.map(i=>low[i]),
-          marker:{symbol:"triangle-down", size:12, line:{width:1}}, name:"Lows"
-        });
-      }
-    }
-
-    await Plotly.newPlot(els.cCandles, tracesTop as any, fmtLayout(420, {xaxis:{rangeslider:{visible:false}}}), {responsive:true});
-
-    // Stochastic
-    await Plotly.newPlot(els.cStoch, [
-      {type:"scatter", mode:"lines", x, y:data.indicators.stoch_k, name:"%K"},
-      {type:"scatter", mode:"lines", x, y:data.indicators.stoch_d, name:"%D"},
-      {type:"scatter", mode:"lines", x:[x[0], x[x.length-1]], y:[80,80], line:{dash:"dot"}, showlegend:false},
-      {type:"scatter", mode:"lines", x:[x[0], x[x.length-1]], y:[20,20], line:{dash:"dot"}, showlegend:false},
-    ] as any, fmtLayout(220, {yaxis:{range:[0,100]}}), {responsive:true});
-
-    // Stoch RSI
-    await Plotly.newPlot(els.cStochR, [
-      {type:"scatter", mode:"lines", x, y:data.indicators.stochrsi_k, name:"Stoch RSI %K"},
-      {type:"scatter", mode:"lines", x, y:data.indicators.stochrsi_d, name:"Stoch RSI %D"},
-      {type:"scatter", mode:"lines", x:[x[0], x[x.length-1]], y:[80,80], line:{dash:"dot"}, showlegend:false},
-      {type:"scatter", mode:"lines", x:[x[0], x[x.length-1]], y:[20,20], line:{dash:"dot"}, showlegend:false},
-    ] as any, fmtLayout(220, {yaxis:{range:[0,100]}}), {responsive:true});
-
-    // RSI
-    await Plotly.newPlot(els.cRSI, [
-      {type:"scatter", mode:"lines", x, y:data.indicators.rsi, name:"RSI"},
-      {type:"scatter", mode:"lines", x:[x[0], x[x.length-1]], y:[70,70], line:{dash:"dot"}, showlegend:false},
-      {type:"scatter", mode:"lines", x:[x[0], x[x.length-1]], y:[30,30], line:{dash:"dot"}, showlegend:false},
-    ] as any, fmtLayout(220, {yaxis:{range:[0,100]}}), {responsive:true});
-
-    // MACD
-    await Plotly.newPlot(els.cMACD, [
-      {type:"bar", x, y:data.indicators.macd.hist, name:"Hist"},
-      {type:"scatter", mode:"lines", x, y:data.indicators.macd.line, name:"MACD"},
-      {type:"scatter", mode:"lines", x, y:data.indicators.macd.signal, name:"Signal"},
-    ] as any, fmtLayout(220, {}), {responsive:true});
-
-    // Trend (Close + Markierungen)
-    await Plotly.newPlot(els.cTrend, [
-      {type:"scatter", mode:"lines", x, y:close, name:"Close"},
-    ] as any, fmtLayout(260, {}), {responsive:true});
-
-  } catch (e) {
-    console.error(e);
-    [els.cCandles, els.cStoch, els.cStochR, els.cRSI, els.cMACD, els.cTrend].forEach(div=>{
-      div.innerHTML = `<div style="padding:16px;color:#b00">Fehler beim Laden</div>`;
-    });
+async function load(){
+  const base = apiBase();
+  if(!base){ console.warn("API base not set"); }
+  const url = `${base}/v1/chart?ticker=${encodeURIComponent(el.t.value.trim())}&interval=${el.i.value}&period=${el.p.value}`;
+  const res = await fetch(url, {cache:"no-store"});
+  const data = await res.json() as ChartResp;
+  if(!data.ok || !data.ohlc || !data.indicators){ 
+    console.error("API error", data); 
+    [el.cm,el.cst,el.csr,el.rsi,el.macd,el.tr].forEach(n=>n.innerHTML="");
+    return;
   }
+
+  const x = data.ohlc.x;
+  const o = data.ohlc.open, h = data.ohlc.high, l = data.ohlc.low, c = data.ohlc.close;
+  const ind = data.indicators!;
+  const piv = data.pivots || {lows:[], highs:[]};
+
+  // MAIN
+  Plotly.newPlot(el.cm, [
+    {type:"candlestick", x, open:o, high:h, low:l, close:c, name:"OHLC", increasing:{line:{width:1}}, decreasing:{line:{width:1}}},
+    {type:"scatter", mode:"lines", x, y:ind.bb_upper, name:"BB Upper", line:{width:1, dash:"dot"}},
+    {type:"scatter", mode:"lines", x, y:ind.bb_lower, name:"BB Lower", line:{width:1, dash:"dot"}},
+    {type:"scatter", mode:"lines", x, y:ind.bb_basis, name:"BB Basis", line:{width:1, dash:"dot"}},
+    {type:"scatter", mode:"lines", x, y:ind.ema9,  name:"EMA 9",  line:{width:1}},
+    {type:"scatter", mode:"lines", x, y:ind.ema21, name:"EMA 21", line:{width:1}},
+    {type:"scatter", mode:"lines", x, y:ind.ema50, name:"EMA 50", line:{width:1}},
+  ], {margin:{l:30,r:10,t:10,b:20}, xaxis:{rangeslider:{visible:false}}, yaxis:{fixedrange:false}, showlegend:false, responsive:true});
+
+  // STOCHASTIC
+  Plotly.newPlot(el.cst, [
+    {type:"scatter", mode:"lines", x, y:ind.stoch.k, name:"%K"},
+    {type:"scatter", mode:"lines", x, y:ind.stoch.d, name:"%D"},
+  ], {margin:{l:30,r:10,t:10,b:20}, yaxis:{range:[0,100]}, shapes:[
+    {type:"line", x0:0, x1:1, y0:80, y1:80, xref:"paper", line:{dash:"dot"}},
+    {type:"line", x0:0, x1:1, y0:20, y1:20, xref:"paper", line:{dash:"dot"}},
+  ], showlegend:false, responsive:true});
+
+  // STOCH RSI
+  Plotly.newPlot(el.csr, [
+    {type:"scatter", mode:"lines", x, y:ind.stoch.k, name:"%K (Stoch RSI)"},
+    {type:"scatter", mode:"lines", x, y:ind.stoch.d, name:"%D (Stoch RSI)"},
+  ], {margin:{l:30,r:10,t:10,b:20}, yaxis:{range:[0,100]}, shapes:[
+    {type:"line", x0:0, x1:1, y0:80, y1:80, xref:"paper", line:{dash:"dot"}},
+    {type:"line", x0:0, x1:1, y0:20, y1:20, xref:"paper", line:{dash:"dot"}},
+  ], showlegend:false, responsive:true});
+
+  // RSI
+  Plotly.newPlot(el.rsi, [
+    {type:"scatter", mode:"lines", x, y:ind.rsi, name:"RSI"},
+  ], {margin:{l:30,r:10,t:10,b:20}, yaxis:{range:[0,100]}, shapes:[
+    {type:"line", x0:0, x1:1, y0:70, y1:70, xref:"paper", line:{dash:"dot"}},
+    {type:"line", x0:0, x1:1, y0:30, y1:30, xref:"paper", line:{dash:"dot"}},
+  ], showlegend:false, responsive:true});
+
+  // MACD
+  Plotly.newPlot(el.macd, [
+    {type:"bar", x, y:ind.macd.hist, name:"Hist", opacity:0.5},
+    {type:"scatter", mode:"lines", x, y:ind.macd.line, name:"MACD"},
+    {type:"scatter", mode:"lines", x, y:ind.macd.signal, name:"Signal"},
+  ], {margin:{l:30,r:10,t:10,b:20}, shapes:[{type:"line", x0:0, x1:1, y0:0, y1:0, xref:"paper", line:{dash:"dot"}}], showlegend:false, responsive:true});
+
+  // TREND + PIVOTS
+  const highs = (piv.highs||[]).map(i=>({x:x[i], y:c[i]}));
+  const lows  = (piv.lows||[] ).map(i=>({x:x[i], y:c[i]}));
+  Plotly.newPlot(el.tr, [
+    {type:"scatter", mode:"lines", x, y:c, name:"Close", line:{width:1}},
+    {type:"scatter", mode:"markers", x:highs.map(v=>v.x), y:highs.map(v=>v.y), name:"Highs", marker:{symbol:"triangle-up", size:12}},
+    {type:"scatter", mode:"markers", x:lows.map(v=>v.x),  y:lows.map(v=>v.y),  name:"Lows",  marker:{symbol:"triangle-down", size:12}},
+  ], {margin:{l:30,r:10,t:10,b:20}, annotations:[
+    {xref:"paper", yref:"paper", x:1.0, y:1.12, showarrow:false, text:`Trend: ${ind.trend.dir} • strength ${(ind.trend.strength*100).toFixed(0)}%`, font:{size:12, color:"#666"}}
+  ], showlegend:false, responsive:true});
+
+  setTimeout(()=>[el.cm,el.cst,el.csr,el.rsi,el.macd,el.tr].forEach(Plotly.Plots.resize), 50);
 }
 
-els.refresh?.addEventListener("click", loadChart);
-window.addEventListener("load", loadChart);
+el.btn.addEventListener("click", load);
+window.addEventListener("load", load);
+window.addEventListener("resize", ()=>[el.cm,el.cst,el.csr,el.rsi,el.macd,el.tr].forEach(Plotly.Plots.resize));
