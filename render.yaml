@@ -14,7 +14,7 @@ services:
     name: mvp-frontend
     rootDir: frontend
     buildCommand: npm ci && npm run build
-    staticPublishPath: dist
+    publishPath: dist
     autoDeploy: true
     domains:
       - tool.market-vision-pro.com
