@@ -9,9 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "plotly.js-dist-min": "^2.35.3",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "plotly.js-dist-min": "^2.31.1"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",

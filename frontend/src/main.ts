@@ -1,3 +1,4 @@
+import Plotly from "plotly.js-dist-min";
 type ChartResp = {
   ok: boolean;
   ticker: string;
