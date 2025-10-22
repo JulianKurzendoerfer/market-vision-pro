@@ -9,10 +9,11 @@ services:
     autoDeploy: true
     domains:
       - api.market-vision-pro.com
-  - type: static
+
+  - type: static_site
     name: mvp-frontend
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     staticPublishPath: dist
     autoDeploy: true
     domains:
