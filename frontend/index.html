@@ -1,45 +1,55 @@
 <!doctype html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Market Vision Pro</title>
-  <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:#fafafa;color:#111}
-    .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
-    .row{display:grid;grid-template-columns:1fr auto auto auto auto auto;gap:8px;align-items:center}
-    .panel{background:#fff;border:1px solid #e6e6e6;border-radius:12px;padding:12px;margin-top:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-    .panel h2{font-size:14px;margin:0 0 8px 0;color:#444}
-    #chart-main{height:420px}
-    #chart-stoch,#chart-stochrsi,#chart-rsi,#chart-macd,#chart-trend{height:260px}
-    .inputs input,.inputs select,.inputs button{height:32px;border:1px solid #ccc;border-radius:8px;padding:0 10px;background:#fff}
-    .inputs button{cursor:pointer}
-  </style>
-  <script>window.API = window.API || (window.VITE_API_BASE || "");</script>
-  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-</head>
-<body>
-<div class="wrap">
-  <h1 style="margin:0 0 12px 0;">Market Vision Pro</h1>
-  <div class="panel inputs">
-    <div class="row">
-      <label for="ticker">Ticker:</label>
-      <input id="ticker" value="AAPL" style="width:140px"/>
-      <label for="interval">Intervall:</label>
-      <select id="interval"><option value="1d" selected>1d</option><option value="1wk">1w</option></select>
-      <label for="period">Zeitraum:</label>
-      <select id="period"><option value="6mo">6m</option><option value="1y" selected>1y</option><option value="2y">2y</option><option value="3y">3y</option></select>
-      <button id="refresh">Refresh</button>
-    </div>
-  </div>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Market Vision Pro</title>
+  </head>
+  <body style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;">
+    <div style="max-width:1200px;margin:20px auto;padding:0 12px;">
+      <h1 style="margin:0 0 12px 0;">Market Vision Pro</h1>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+        <label>Ticker:</label>
+        <input id="ticker" value="AAPL" style="padding:6px 8px;" />
+        <label>Intervall:</label>
+        <select id="interval" style="padding:6px 8px;">
+          <option value="1d" selected>1d</option>
+          <option value="1wk">1w</option>
+        </select>
+        <label>Zeitraum:</label>
+        <select id="period" style="padding:6px 8px;">
+          <option value="1y" selected>1y</option>
+          <option value="6mo">6mo</option>
+          <option value="2y">2y</option>
+          <option value="5y">5y</option>
+        </select>
+        <button id="refresh" style="padding:6px 12px;">Refresh</button>
+      </div>
 
-  <div class="panel"><h2>Candles · Bollinger · EMA 9/21/50</h2><div id="chart-main"></div></div>
-  <div class="panel"><h2>Stochastic (14,3,3)</h2><div id="chart-stoch"></div></div>
-  <div class="panel"><h2>Stoch RSI (14,3,3)</h2><div id="chart-stochrsi"></div></div>
-  <div class="panel"><h2>RSI (14)</h2><div id="chart-rsi"></div></div>
-  <div class="panel"><h2>MACD (12,26,9)</h2><div id="chart-macd"></div></div>
-  <div class="panel"><h2>Trend & Wendepunkte</h2><div id="chart-trend"></div></div>
-</div>
-<script type="module" src="/src/main.ts"></script>
-</body>
+      <div class="panel" style="height:420px;border:1px solid #eee;border-radius:10px;margin-bottom:14px;padding:6px;">
+        <div id="panel0" style="width:100%;height:100%;"></div>
+      </div>
+
+      <div class="panel" style="height:220px;border:1px solid #eee;border-radius:10px;margin-bottom:14px;padding:6px;">
+        <div id="panel1" style="width:100%;height:100%;"></div>
+      </div>
+
+      <div class="panel" style="height:220px;border:1px solid #eee;border-radius:10px;margin-bottom:14px;padding:6px;">
+        <div id="panel2" style="width:100%;height:100%;"></div>
+      </div>
+
+      <div class="panel" style="height:220px;border:1px solid #eee;border-radius:10px;margin-bottom:14px;padding:6px;">
+        <div id="panel3" style="width:100%;height:100%;"></div>
+      </div>
+
+      <div class="panel" style="height:220px;border:1px solid #eee;border-radius:10px;margin-bottom:14px;padding:6px;">
+        <div id="panel4" style="width:100%;height:100%;"></div>
+      </div>
+
+      <div class="panel" style="height:220px;border:1px solid #eee;border-radius:10px;margin-bottom:14px;padding:6px;">
+        <div id="panel5" style="width:100%;height:100%;"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>
