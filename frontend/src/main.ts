@@ -132,3 +132,17 @@ window.addEventListener("resize", () => {
     if (el) Plotly.Plots.resize(el as any)
   })
 })
+
+function tunePlotly(): void {
+  const H = 240
+  document.querySelectorAll<HTMLElement>('.js-plotly-plot').forEach(el => {
+    try { (window as any).Plotly.relayout(el, { showlegend: false, height: H }) } catch {}
+  })
+}
+if (!(window as any).__mv_tunePlotly) {
+  (window as any).__mv_tunePlotly = true
+  new MutationObserver(() => tunePlotly()).observe(document.body, { childList: true, subtree: true })
+  window.addEventListener('load', tunePlotly)
+  window.addEventListener('resize', () => setTimeout(tunePlotly, 0))
+  setInterval(tunePlotly, 1500)
+}
