@@ -146,3 +146,25 @@ if (!(window as any).__mv_tunePlotly) {
   window.addEventListener('resize', () => setTimeout(tunePlotly, 0))
   setInterval(tunePlotly, 1500)
 }
+const __FORCE_LAYOUT__={showlegend:false,height:260,margin:{l:40,r:10,t:10,b:28}};
+declare const window:any;
+import Plotly from 'plotly-js-dist-min';
+const __origNew__:(...a:any[])=>any=(Plotly as any).newPlot;
+(Plotly as any).newPlot=function(gd:any,data:any,layout:any,config:any){
+  layout=Object.assign({},layout||{},__FORCE_LAYOUT__);
+  config=Object.assign({displayModeBar:false,responsive:true},config||{});
+  return __origNew__.call(this,gd,data,layout,config).then((g:any)=>{return (Plotly as any).relayout(g,__FORCE_LAYOUT__);});
+};
+const __origReact__:(...a:any[])=>any=(Plotly as any).react;
+(Plotly as any).react=function(gd:any,data:any,layout:any,config:any){
+  layout=Object.assign({},layout||{},__FORCE_LAYOUT__);
+  config=Object.assign({displayModeBar:false,responsive:true},config||{});
+  return __origReact__.call(this,gd,data,layout,config).then((g:any)=>{return (Plotly as any).relayout(g,__FORCE_LAYOUT__);});
+};
+if(!window.__mv_tune_once){
+  window.__mv_tune_once=true;
+  const tune=()=>{document.querySelectorAll('.js-plotly-plot').forEach((el:any)=>{try{(Plotly as any).relayout(el,__FORCE_LAYOUT__);}catch(_){}})}
+  window.addEventListener('load',tune);
+  window.addEventListener('resize',()=>setTimeout(tune,120));
+  setInterval(tune,1500);
+}
