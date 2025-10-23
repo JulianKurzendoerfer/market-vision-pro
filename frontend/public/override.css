@@ -1,0 +1,2 @@
+.js-plotly-plot .legend,
+.js-plotly-plot .infolayer .legend { display:none !important; }
