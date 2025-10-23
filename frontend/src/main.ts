@@ -148,7 +148,6 @@ if (!(window as any).__mv_tunePlotly) {
 }
 const __FORCE_LAYOUT__={showlegend:false,height:260,margin:{l:40,r:10,t:10,b:28}};
 declare const window:any;
-import Plotly from 'plotly-js-dist-min';
 const __origNew__:(...a:any[])=>any=(Plotly as any).newPlot;
 (Plotly as any).newPlot=function(gd:any,data:any,layout:any,config:any){
   layout=Object.assign({},layout||{},__FORCE_LAYOUT__);
@@ -168,3 +167,33 @@ if(!window.__mv_tune_once){
   window.addEventListener('resize',()=>setTimeout(tune,120));
   setInterval(tune,1500);
 }
+declare global { interface Window { Plotly:any; __mv_tune_once?:boolean } }
+
+const __MV_FORCE__ = { showlegend:false, height:260, margin:{ l:40, r:10, t:10, b:28 } };
+
+function __mv_hook(P:any){
+  const _new = P.newPlot.bind(P);
+  const _react = P.react.bind(P);
+  P.newPlot = (gd:any, data:any, layout:any, config:any) => {
+    layout = Object.assign({}, layout||{}, __MV_FORCE__);
+    config = Object.assign({ displayModeBar:false, responsive:true }, config||{});
+    return _new(gd, data, layout, config).then((g:any)=>P.relayout(g, __MV_FORCE__));
+  };
+  P.react = (gd:any, data:any, layout:any, config:any) => {
+    layout = Object.assign({}, layout||{}, __MV_FORCE__);
+    config = Object.assign({ displayModeBar:false, responsive:true }, config||{});
+    return _react(gd, data, layout, config).then((g:any)=>P.relayout(g, __MV_FORCE__));
+  };
+  const tune = () => document.querySelectorAll('.js-plotly-plot')
+    .forEach((el:any)=>{ try{ P.relayout(el, __MV_FORCE__); }catch(_){} });
+  window.addEventListener('load', tune);
+  window.addEventListener('resize', () => setTimeout(tune, 120));
+  setInterval(tune, 1500);
+}
+
+(function wait(){
+  if(window.__mv_tune_once) return;
+  const P = window.Plotly;
+  if(P){ window.__mv_tune_once = true; __mv_hook(P); return; }
+  setTimeout(wait, 150);
+})();
