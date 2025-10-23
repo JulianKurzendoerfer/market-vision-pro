@@ -1,2 +1,4 @@
-[id^="panel"]{height:260px!important}
-.js-plotly-plot .legend,.js-plotly-plot g.legend{display:none!important}
+.panel{height:240px!important}
+.js-plotly-plot .legend{display:none!important}
+.js-plotly-plot g.legend{display:none!important}
+.js-plotly-plot .infolayer .legend{display:none!important}
