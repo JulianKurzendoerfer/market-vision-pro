@@ -1,3 +1,4 @@
+import { applyTheme } from './theme';
 import Plotly from 'plotly.js-dist-min'
 
 const apiBase = (import.meta as any).env?.VITE_API_BASE || (window as any).API_BASE || "https://market-vision-pro.onrender.com"
