@@ -197,3 +197,10 @@ function __mv_hook(P:any){
   if(P){ window.__mv_tune_once = true; __mv_hook(P); return; }
   setTimeout(wait, 150);
 })();
+(async ()=>{
+  const mod = await import("./theme");
+  const hook = () => document.querySelectorAll(".js-plotly-plot").forEach((el:any)=>mod.applyTheme(el));
+  window.addEventListener("load", hook);
+  window.addEventListener("resize", ()=>setTimeout(hook, 120));
+  new MutationObserver(()=>setTimeout(hook,0)).observe(document.body, {subtree:true, childList:true});
+})();
