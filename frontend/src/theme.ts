@@ -13,9 +13,13 @@ export const COLORS = {
 
 export async function applyTheme(gd:any){
   if(!gd || !gd.data || !gd.layout) return;
-  const d = gd.data;
+  const d:any[] = gd.data;
 
   for (const t of d){
+    // Legenden überall aus
+    (t as any).showlegend = false;
+
+    // Candles knalliger
     if (t.type === "candlestick"){
       t.increasing = t.increasing || {};
       t.decreasing = t.decreasing || {};
@@ -39,7 +43,7 @@ export async function applyTheme(gd:any){
     if (name === "bb lower"){
       t.line = Object.assign({}, t.line, {color: COLORS.bbLower, width: 1.6});
     }
-    if (name === "bb basis" || name === "bb basis"){
+    if (name === "bb basis"){
       t.line = Object.assign({}, t.line, {color: COLORS.bbBasis, width: 1.2, dash: "dot"});
     }
 
@@ -56,13 +60,13 @@ export async function applyTheme(gd:any){
     }
   }
 
+  // global keine Legende + dunklerer, knackiger Hintergrund
   gd.layout.showlegend = false;
-  // minimal grid/bg contrast
   gd.layout.paper_bgcolor = gd.layout.paper_bgcolor || "#0e1320";
   gd.layout.plot_bgcolor  = gd.layout.plot_bgcolor  || "#0e1320";
   (gd.layout as any).font = Object.assign({}, (gd.layout as any).font, {color:"#e9eefb"});
 
-  // re-render with theme applied
-  const Plotly = (await import("plotly-js-dist-min")).default || (await import("plotly-js-dist-min"));
-  await Plotly.react(gd, d, gd.layout);
+  const P = (window as any).Plotly;
+  if (P?.react) await P.react(gd, d, gd.layout);
+  else if (P?.redraw) P.redraw(gd);
 }
