@@ -1,5 +1,7 @@
 import React from "react";
-import Plot from "react-plotly.js";
+import createPlotlyComponent from "react-plotly.js/factory";
+import Plotly from "plotly.js-dist-min";
+const Plot = createPlotlyComponent(Plotly);
 import { computeTrend } from "../lib/trend";
 
 export default function TrendPanel({ ohlc, height=220, background="#ffffff", lineColor="#1f77b4" }: any){
