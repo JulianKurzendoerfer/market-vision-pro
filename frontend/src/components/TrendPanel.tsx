@@ -24,12 +24,14 @@ function extractOHLC(): OHLC | null {
   return { time, close, high, low };
 }
 
-function extrema(vals:number[], win=10){ const lows:number[]=[], highs:number[]=[];
+function extrema(vals:number[], win=10){
+  const lows:number[]=[], highs:number[]=[];
   for (let i=win;i<vals.length-win;i++){
     let lo=true, hi=true;
     for (let j=i-win;j<=i+win;j++){ if (vals[j] < vals[i]) lo=false; if (vals[j] > vals[i]) hi=false; if(!lo && !hi) break; }
     if (lo) lows.push(i); if (hi) highs.push(i);
-  } return {lows, highs};
+  }
+  return {lows, highs};
 }
 
 function clusterLevels(v:number[], tol=0.01){
@@ -37,7 +39,8 @@ function clusterLevels(v:number[], tol=0.01){
   for (const x of s){
     if (!out.length || Math.abs(x-out[out.length-1]) > tol*Math.max(1,out[out.length-1])) out.push(x);
     else out[out.length-1]=(out[out.length-1]+x)/2;
-  } return out;
+  }
+  return out;
 }
 
 export default function TrendPanel(){
