@@ -204,3 +204,12 @@ function __mv_hook(P:any){
   window.addEventListener("resize", ()=>setTimeout(hook, 120));
   new MutationObserver(()=>setTimeout(hook,0)).observe(document.body, {subtree:true, childList:true});
 })();
+declare global { interface Window { __mv_theme_once__?: boolean } }
+if(!(window as any).__mv_theme_once__){
+  (window as any).__mv_theme_once__ = true;
+  const run = () => document.querySelectorAll<HTMLElement>('.js-plotly-plot')
+    .forEach(el => { try { (window as any).Plotly && applyTheme((el as any)); } catch{} });
+  window.addEventListener('load', run);
+  window.addEventListener('resize', () => setTimeout(run, 50));
+  setInterval(run, 1200);
+}
