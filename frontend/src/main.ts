@@ -214,3 +214,18 @@ if(!(window as any).__mv_theme_once__){
   window.addEventListener('resize', () => setTimeout(run, 50));
   setInterval(run, 1200);
 }
+import React from "react";
+import { createRoot } from "react-dom/client";
+import TrendPanel from "./components/TrendPanel";
+if (typeof document !== "undefined") {
+  window.addEventListener("load", () => {
+    try{
+      const parent = document.querySelector("main") || document.body;
+      let el = document.getElementById("mv-trendpanel-root");
+      if(!el){ el=document.createElement("div"); el.id="mv-trendpanel-root"; el.style.marginTop="16px"; parent.appendChild(el); }
+      const root = (window as any).__mv_trend_root || createRoot(el);
+      (window as any).__mv_trend_root = root;
+      root.render(React.createElement(TrendPanel));
+    }catch(_e){}
+  });
+}
