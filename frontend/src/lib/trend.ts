@@ -1,6 +1,56 @@
-export type TrendInput={time:(number|Date)[];close:number[];high?:number[];low?:number[]};
-export type TrendOut={time:number[];close:number[];lowsIdx:number[];highsIdx:number[];levels:{y:number;count:number;strength:number}[]};
-const toNum=(a:any[])=>a.map(v=>v instanceof Date?+v:(typeof v==='string'?Date.parse(v):+v));
-function extrema(vals:number[],win:number){const n=vals.length,l:number[]=[],h:number[]=[];for(let i=Math.max(1,win);i<n-Math.max(1,win);i++){let lo=true,hi=true;const v=vals[i];for(let k=1;k<=win;k++){if(vals[i-k]<v||vals[i+k]<v)lo=false;if(vals[i-k]>v||vals[i+k]>v)hi=false;if(!lo&&!hi)break;}if(lo)l.push(i);if(hi)h.push(i);}return{l,h}};
-function clusterLevels(vals:number[],tol=0.01){if(!vals.length)return[] as {y:number;count:number;strength:number}[];const s=[...vals].sort((a,b)=>a-b);const out:{y:number;count:number}[]=[];for(const v of s){if(!out.length){out.push({y:v,count:1});continue;}const last=out[out.length-1];if(Math.abs(v-last.y)<=tol*Math.max(1,Math.abs(last.y))){last.y=(last.y*last.count+v)/(last.count+1);last.count++;}else out.push({y:v,count:1});}const cts=out.map(x=>x.count),mn=Math.min(...cts),mx=Math.max(...cts);return out.map(x=>({y:x.y,count:x.count,strength:(x.count-mn)/(mx-mn||1)}));}
-export function computeTrend(ohlc:TrendInput,win=10,tol=0.01):TrendOut{const time=toNum(ohlc.time),close=ohlc.close.map(Number);const highs=(ohlc.high??close).map(Number),lows=(ohlc.low??close).map(Number);const {l:lowsIdx,h:highsIdx}=extrema(close,win);const lv=clusterLevels([...lowsIdx.map(i=>lows[i]),...highsIdx.map(i=>highs[i])],tol);return{time,close,lowsIdx,highsIdx,levels:lv};}
+export type TrendInput = {
+  time: number[];
+  close: number[];
+  high: number[];
+  low: number[];
+};
+
+function extrema(vals: number[], win = 10) {
+  const n = vals.length;
+  const lowsIdx: number[] = [];
+  const highsIdx: number[] = [];
+  for (let i = win; i < n - win; i++) {
+    let isLow = true, isHigh = true;
+    for (let k = i - win; k <= i + win; k++) {
+      if (vals[k] < vals[i]) isLow = false;
+      if (vals[k] > vals[i]) isHigh = false;
+      if (!isLow && !isHigh) break;
+    }
+    if (isLow) lowsIdx.push(i);
+    if (isHigh) highsIdx.push(i);
+  }
+  return { lowsIdx, highsIdx };
+}
+
+function clusterLevels(values: number[], tol = 0.01) {
+  if (!values.length) return [] as number[];
+  const v = values.slice().sort((a, b) => a - b);
+  const out: number[] = [];
+  let acc: number[] = [v[0]];
+  for (let i = 1; i < v.length; i++) {
+    const last = acc[acc.length - 1];
+    const ok = Math.abs(v[i] - last) <= tol * Math.max(1, Math.abs(last));
+    if (ok) acc.push(v[i]);
+    else {
+      out.push(acc.reduce((s, x) => s + x, 0) / acc.length);
+      acc = [v[i]];
+    }
+  }
+  out.push(acc.reduce((s, x) => s + x, 0) / acc.length);
+  return out;
+}
+
+export function computeTrend(ohlc: TrendInput, win = 10, tol = 0.01) {
+  const c = (ohlc?.close || []).map(Number);
+  const t = (ohlc?.time || []).slice();
+  const h = (ohlc?.high || []).map(Number);
+  const l = (ohlc?.low || []).map(Number);
+  const n = Math.min(c.length, t.length);
+  const cc = c.slice(0, n);
+  const tt = t.slice(0, n);
+  const { lowsIdx, highsIdx } = extrema(cc, win);
+  const lowVals = lowsIdx.map(i => cc[i]);
+  const highVals = highsIdx.map(i => cc[i]);
+  const levels = clusterLevels(lowVals.concat(highVals), tol);
+  return { time: tt, close: cc, lowsIdx, highsIdx, levels };
+}
