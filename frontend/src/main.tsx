@@ -1,3 +1,4 @@
+import "./boot";
 import TrendPanel from './components/TrendPanel';
 import { createRoot } from 'react-dom/client'
 import React from 'react'
