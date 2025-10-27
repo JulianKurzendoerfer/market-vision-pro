@@ -8,6 +8,6 @@ export function mountTrendPanel(){
   const w=window as any;
   const root=w.__mv_trend_root||createRoot(host!);
   w.__mv_trend_root=root;
-  root.render(<TrendPanel/>);
+
 }
 if(typeof document!=="undefined"){window.addEventListener("load",()=>setTimeout(mountTrendPanel,100));window.addEventListener("resize",()=>setTimeout(mountTrendPanel,150));}
