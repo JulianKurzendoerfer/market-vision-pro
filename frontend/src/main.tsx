@@ -14,3 +14,9 @@ if (typeof document!=='undefined') {
     createRoot(el).render(<TrendPanel />);
   }
 }
+
+import { mountTrendPanel } from './mountTrend';
+mountTrendPanel();
+
+import { hookHideHighLow } from './hideHighLow';
+hookHideHighLow();

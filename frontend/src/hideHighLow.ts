@@ -1,0 +1,2 @@
+export function hideHighLowOnce(gd:any){const P=(window as any).Plotly;if(!gd||!gd.data||!P) return;const idx:number[]=[];gd.data.forEach((t:any,i:number)=>{const n=(t?.name||"").toString().toLowerCase();if(n==="highs"||n==="lows") idx.push(i);});if(idx.length) P.restyle(gd,{visible:false},idx);}
+export function hookHideHighLow(){const run=()=>{document.querySelectorAll(".js-plotly-plot").forEach((el:any)=>hideHighLowOnce(el));};window.addEventListener("load",run);window.addEventListener("resize",()=>setTimeout(run,120));setInterval(run,1200);}
