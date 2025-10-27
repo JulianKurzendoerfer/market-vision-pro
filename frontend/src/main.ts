@@ -90,8 +90,8 @@ async function load() {
   const shapes: any[] = []
   const hi = pivH || []
   const lo = pivL || []
-  const traceHigh = { type: "scatter", mode: "markers", x: hi.map((i:number)=>x[i]), y: hi.map((i:number)=>c[i]), name: "High", marker: { symbol: "triangle-up", size: 10 } }
-  const traceLow  = { type: "scatter", mode: "markers", x: lo.map((i:number)=>x[i]), y: lo.map((i:number)=>c[i]), name: "Low",  marker: { symbol: "triangle-down", size: 10 } }
+  const traceHigh = { type: "scatter", mode: "markers", x: hi.map((i:number)=>x[i]), y: hi.map((i:number)=>c[i]), name: "High", marker:{ symbol:'circle', size: 10 } }
+  const traceLow  = { type: "scatter", mode: "markers", x: lo.map((i:number)=>x[i]), y: lo.map((i:number)=>c[i]), name: "Low",  marker:{ symbol:'circle', size: 10 } }
 
   await Plotly.newPlot("panel0", [candles, tBBU, tBBB, tBBL, tE9, tE21, tE50, traceHigh, traceLow], {
     margin: { l: 30, r: 10, t: 30, b: 20 },
