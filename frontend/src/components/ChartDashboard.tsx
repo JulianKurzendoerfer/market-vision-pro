@@ -1,89 +1,110 @@
-import React,{useMemo,useState} from "react";
-import Plotly from "plotly.js-dist-min";
-import createPlotlyComponent from "react-plotly.js/factory";
-import { computeBB, ema, rsi, stoch } from "../signals/aggregate";
-import type { OHLC } from "../signals/aggregate";
-const Plot:any=createPlotlyComponent(Plotly);
+import React,{useEffect,useMemo,useState} from 'react'
+import PlotFactory from 'react-plotly.js/factory'
+import Plotly from 'plotly.js-dist-min'
+import {ema,bb,rsi,stochKDL,macd,pivots,OHLC} from '../lib/indicators'
+const Plot=PlotFactory(Plotly as any)
 
-function probeOHLC():OHLC{
-  const w:any=window as any;
-  const pick=(x:any)=>Array.isArray(x)?x:(x&&x.data?x.data:(x&&x.fullData?x.fullData:null));
-  const cand=(a:any[])=>a.find((t:any)=>t&&((t.type==="candlestick")||(t.open&&t.high&&t.low&&t.close)));
-  const pools=[w.__gd,w._gd,w.gd,w.data,w.gd_fullData,(w.appState&&w.appState.data)];
-  for(const s of pools){const a=pick(s); if(Array.isArray(a)){const t=cand(a); if(t){const time=(t.x||t.time||[]).map((v:any)=>new Date(v).getTime()); return {time,open:t.open,high:t.high,low:t.low,close:t.close};}}}
-  const n=220, now=Date.now(), day=86400000;
-  const time:number[]=[], open:number[]=[], high:number[]=[], low:number[]=[], close:number[]=[];
-  let p=200;
-  for(let i=n-1;i>=0;i--) time.push(now-i*day);
-  for(let i=0;i<n;i++){const step=(Math.random()-0.5)*1.5; const o=p; const c=p+step; const h=Math.max(o,c)+Math.random(); const l=Math.min(o,c)-Math.random(); open.push(+o.toFixed(2));close.push(+c.toFixed(2));high.push(+h.toFixed(2));low.push(+l.toFixed(2)); p=c;}
-  return {time,open,high,low,close};
+function useOHLC():OHLC|null{
+  const el=document.querySelector('.js-plotly-plot') as any
+  if(!el||!el.data||!el.data.length) return null
+  const c=el.data.find((t:any)=>t.type==='candlestick')||el.data[0]
+  if(!c||!c.x||!c.close) return null
+  return {time:c.x.map((t:any)=>+new Date(t)),open:c.open,high:c.high,low:c.low,close:c.close}
 }
 
 export default function ChartDashboard(){
-  const ohlc=useMemo(()=>probeOHLC(),[]);
-  const [showEMAs,setShowEMAs]=useState(true);
-  const [showBB,setShowBB]=useState(true);
-  const [showBBSignals,setShowBBSignals]=useState(false);
+  const [showEMA,setShowEMA]=useState(true)
+  const [showBB,setShowBB]=useState(true)
+  const [showMACD,setShowMACD]=useState(true)
+  const [showRSI,setShowRSI]=useState(true)
+  const [showSTO,setShowSTO]=useState(true)
+  const [showTrend,setShowTrend]=useState(true)
+  const [ticker,setTicker]=useState<string>(new URLSearchParams(location.search).get('t')||'AAPL')
 
-  const ema8 = useMemo(()=>ema(ohlc.close,8),[ohlc]);
-  const ema20= useMemo(()=>ema(ohlc.close,20),[ohlc]);
-  const ema50= useMemo(()=>ema(ohlc.close,50),[ohlc]);
-  const bb   = useMemo(()=>computeBB(ohlc,20,2,1.5),[ohlc]);
-  const r    = useMemo(()=>rsi(ohlc.close,14),[ohlc]);
-  const st   = useMemo(()=>stoch(ohlc.high,ohlc.low,ohlc.close,14,3),[ohlc]);
+  const ohlc=useOHLC()
 
-  const candle={type:"candlestick",x:ohlc.time,open:ohlc.open,high:ohlc.high,low:ohlc.low,close:ohlc.close,name:"Price",yaxis:"y"};
-  const traces:any[]=[candle];
+  const studies=useMemo(()=>{
+    if(!ohlc) return null
+    const {time,high,low,close}=ohlc
+    const e20=ema(close,20),e50=ema(close,50),e200=ema(close,200)
+    const bands=bb(close,20,2)
+    const r=rsi(close,14)
+    const st=stochKDL(high,low,close,14,3)
+    const M=macd(close,12,26,9)
+    const piv=pivots(ohlc,10,0.01)
+    return {time,e20,e50,e200,bands,r,st,M,piv}
+  },[JSON.stringify(ohlc)])
 
-  if(showEMAs){
-    traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:ema8,name:"EMA 8",yaxis:"y"});
-    traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:ema20,name:"EMA 20",yaxis:"y"});
-    traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:ema50,name:"EMA 50",yaxis:"y"});
-  }
-  if(showBB){
-    traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:bb.upper,name:"BB Upper",yaxis:"y"});
-    traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:bb.middle,name:"BB Mid",yaxis:"y"});
-    traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:bb.lower,name:"BB Lower",yaxis:"y"});
-  }
-  if(showBB && showBBSignals){
-    traces.push({type:"scatter",mode:"markers",x:ohlc.time,y:bb.buyStrong,name:"BB Buy (strong)",marker:{symbol:"triangle-up",size:10},yaxis:"y"});
-    traces.push({type:"scatter",mode:"markers",x:ohlc.time,y:bb.buyWeak,  name:"BB Buy (weak)",  marker:{symbol:"triangle-up",size:7}, yaxis:"y"});
-    traces.push({type:"scatter",mode:"markers",x:ohlc.time,y:bb.sellStrong,name:"BB Sell (strong)",marker:{symbol:"triangle-down",size:10},yaxis:"y"});
-    traces.push({type:"scatter",mode:"markers",x:ohlc.time,y:bb.sellWeak,  name:"BB Sell (weak)",  marker:{symbol:"triangle-down",size:7}, yaxis:"y"});
-  }
+  useEffect(()=>{
+    const root=document.getElementById('root-plot') as any
+    if(!root) return
+    const src:any=document.querySelector('.js-plotly-plot') as any
+    if(!src||!src.data) return
 
-  traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:st.k,name:"Stoch %K",yaxis:"y2"});
-  traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:st.d,name:"Stoch %D",yaxis:"y2"});
+    const traces:any[]=[]
+    const layout:any={grid:{rows:4,columns:1,pattern:'independent',roworder:'top to bottom'},margin:{l:40,r:10,t:10,b:20},showlegend:false}
 
-  traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:r,name:"RSI",yaxis:"y3"});
-  traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:ohlc.time.map(()=>70),name:"RSI 70",yaxis:"y3"});
-  traces.push({type:"scatter",mode:"lines",x:ohlc.time,y:ohlc.time.map(()=>30),name:"RSI 30",yaxis:"y3"});
+    if(src.data.length){
+      const base=JSON.parse(JSON.stringify(src.data))
+      for(const t of base){ if(t.mode==='markers') t.visible=false; if(t.type==='candlestick'){t.increasing={line:{width:1}};t.decreasing={line:{width:1}}} }
+      for(const t of base) t.yaxis='y'
+      traces.push(...base)
+    }
 
-  const badge=bb.last?bb.last:{label:"BB: neutral",color:"#888",dir:"neutral"};
+    if(studies){
+      const {time,e20,e50,e200,bands}=studies
+      if(showEMA){
+        traces.push({x:time,y:e20,type:'scatter',mode:'lines',line:{width:1},name:'EMA20',yaxis:'y'})
+        traces.push({x:time,y:e50,type:'scatter',mode:'lines',line:{width:1},name:'EMA50',yaxis:'y'})
+        traces.push({x:time,y:e200,type:'scatter',mode:'lines',line:{width:1},name:'EMA200',yaxis:'y'})
+      }
+      if(showBB){
+        traces.push({x:time,y:bands.up,type:'scatter',mode:'lines',line:{width:1},name:'BB up',yaxis:'y'})
+        traces.push({x:time,y:bands.lo,type:'scatter',mode:'lines',line:{width:1},name:'BB lo',yaxis:'y'})
+      }
+      layout.yaxis={domain:[0.55,1]}
 
-  const layout:any={
-    margin:{l:50,r:20,t:40,b:30},
-    xaxis:{domain:[0,1],type:"date",anchor:"y3"},
-    yaxis :{domain:[0.5,1]},
-    yaxis2:{domain:[0.25,0.45]},
-    yaxis3:{domain:[0,0.2]},
-    legend:{orientation:"h"}
-  };
+      if(showRSI&&studies.r){
+        traces.push({x:time,y:studies.r,type:'scatter',mode:'lines',line:{width:1},name:'RSI',yaxis:'y2'})
+        layout.yaxis2={domain:[0.4,0.54],range:[0,100]}
+      }
+      if(showSTO&&studies.st){
+        traces.push({x:time,y:studies.st.k,type:'scatter',mode:'lines',line:{width:1},name:'%K',yaxis:'y3'})
+        traces.push({x:time,y:studies.st.d,type:'scatter',mode:'lines',line:{width:1},name:'%D',yaxis:'y3'})
+        layout.yaxis3={domain:[0.25,0.39],range:[0,100]}
+      }
+      if(showMACD&&studies.M){
+        traces.push({x:time,y:studies.M.h,type:'bar',name:'MACD hist',yaxis:'y4'})
+        traces.push({x:time,y:studies.M.m,type:'scatter',mode:'lines',line:{width:1},name:'MACD',yaxis:'y4'})
+        traces.push({x:time,y:studies.M.sig,type:'scatter',mode:'lines',line:{width:1},name:'Signal',yaxis:'y4'})
+        layout.yaxis4={domain:[0.05,0.24]}
+      }
+      if(showTrend&&studies.piv){
+        for(const h of studies.piv.highs){traces.push({x:[studies.time[h.i]],y:[h.p],yaxis:'y',type:'scatter',mode:'markers',marker:{symbol:'triangle-down',size:7},name:'H'})}
+        for(const l of studies.piv.lows){traces.push({x:[studies.time[l.i]],y:[l.p],yaxis:'y',type:'scatter',mode:'markers',marker:{symbol:'triangle-up',size:7},name:'L'})}
+        for(const lv of studies.piv.levels){traces.push({x:[studies.time[0],studies.time[studies.time.length-1]],y:[lv.level,lv.level],type:'scatter',mode:'lines',line:{width:1},name:'Level',yaxis:'y'})}
+      }
+    }
+
+    Plotly.react(root,traces,layout,{responsive:true})
+  },[showEMA,showBB,showMACD,showRSI,showSTO,showTrend,JSON.stringify(studies)])
 
   return (
-    <div style={{padding:16,fontFamily:"system-ui,-apple-system,Segoe UI,Roboto"}}>
-      <h1 style={{margin:"0 0 8px"}}>Market Vision Pro</h1>
-      <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:8}}>
-        <label style={{display:"inline-flex",alignItems:"center",gap:6}}><input type="checkbox" checked={showEMAs} onChange={()=>setShowEMAs(v=>!v as any)} />EMAs</label>
-        <label style={{display:"inline-flex",alignItems:"center",gap:6}}><input type="checkbox" checked={showBB} onChange={()=>setShowBB(v=>!v as any)} />Bollinger</label>
-        <label style={{display:"inline-flex",alignItems:"center",gap:6}}><input type="checkbox" checked={showBBSignals} onChange={()=>setShowBBSignals(v=>!v as any)} />BB Signals</label>
-      </div>
-      <div style={{position:"relative"}}>
-        <div style={{position:"absolute",left:10,top:6,zIndex:10,background:(badge as any).color,color:"#fff",padding:"4px 8px",borderRadius:6,fontSize:12}}>
-          {(badge as any).label}
+    <div style={{padding:'12px'}}>
+      <div style={{display:'flex',gap:16,alignItems:'center',marginBottom:8}}>
+        <div style={{fontWeight:700}}>Market Vision Pro</div>
+        <label style={{display:'inline-flex',gap:6,alignItems:'center'}}><input type="checkbox" checked={showEMA} onChange={e=>setShowEMA(e.target.checked)}/>EMAs</label>
+        <label style={{display:'inline-flex',gap:6,alignItems:'center'}}><input type="checkbox" checked={showBB} onChange={e=>setShowBB(e.target.checked)}/>Bollinger</label>
+        <label style={{display:'inline-flex',gap:6,alignItems:'center'}}><input type="checkbox" checked={showRSI} onChange={e=>setShowRSI(e.target.checked)}/>RSI</label>
+        <label style={{display:'inline-flex',gap:6,alignItems:'center'}}><input type="checkbox" checked={showSTO} onChange={e=>setShowSTO(e.target.checked)}/>Stoch</label>
+        <label style={{display:'inline-flex',gap:6,alignItems:'center'}}><input type="checkbox" checked={showMACD} onChange={e=>setShowMACD(e.target.checked)}/>MACD</label>
+        <label style={{display:'inline-flex',gap:6,alignItems:'center'}}><input type="checkbox" checked={showTrend} onChange={e=>setShowTrend(e.target.checked)}/>TrendPanel</label>
+        <div style={{marginLeft:'auto',display:'inline-flex',gap:6}}>
+          <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="Ticker" style={{padding:'4px 8px',width:90}}/>
+          <button onClick={()=>{const u=new URL(location.href);u.searchParams.set('t',ticker);location.href=u.toString()}}>Refresh</button>
         </div>
-        <Plot data={traces} layout={layout} style={{width:"100%",height:720}} />
       </div>
+      <div id="root-plot" style={{height:'72vh'}} />
     </div>
-  );
+  )
 }
