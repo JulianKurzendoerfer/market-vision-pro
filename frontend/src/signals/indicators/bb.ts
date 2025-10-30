@@ -1,19 +1,75 @@
-import { Signal } from "../types";
-import { sma, rollingStd, near } from "../utils";
-export type BBParams={window?:number;k?:number;tol?:number};
-export function bollinger(close:number[],p:BBParams={}):{mid:number[];up:number[];lo:number[]}{
-  const w=p.window??20;const k=p.k??2;const m=sma(close,w);const sd=rollingStd(close,w);
-  const n=close.length;const up=new Array(n).fill(NaN);const lo=new Array(n).fill(NaN);
-  for(let i=0;i<n;i++){if(!Number.isNaN(m[i])&&!Number.isNaN(sd[i])){up[i]=m[i]+k*sd[i];lo[i]=m[i]-k*sd[i];}}
-  return {mid:m,up,lo};
+import { OHLC, BBResult, Signal } from "../types";
+
+function sma(a:number[], n:number){
+  const out = Array(a.length).fill(NaN);
+  let s=0;
+  for(let i=0;i<a.length;i++){
+    s += a[i];
+    if(i>=n) s -= a[i-n];
+    if(i>=n-1) out[i] = s/n;
+  }
+  return out;
 }
-export function bbSignal(time:number[],close:number[],up:number[],lo:number[],tol=0.01):Signal{
-  const i=close.length-1;const c=close[i];const u=up[i];const l=lo[i];const t=time[i]??Date.now();
-  if(!(isFinite(c)&&isFinite(u)&&isFinite(l))) return {indicator:"BB",direction:"neutral",strength:"neutral",reason:"n/a",confidence:0.5,at:t};
-  const bw=Math.max(1e-9,u-l);const dUp=(u-c)/bw;const dLo=(c-l)/bw;
-  if(c>=u||near(c,u,tol)) return {indicator:"BB",direction:"sell",strength:"strong",reason:"upper",confidence:0.9,at:t};
-  if(c<=l||near(c,l,tol)) return {indicator:"BB",direction:"buy",strength:"strong",reason:"lower",confidence:0.9,at:t};
-  if(dUp<=2*tol) return {indicator:"BB",direction:"sell",strength:"weak",reason:"near upper",confidence:0.6,at:t};
-  if(dLo<=2*tol) return {indicator:"BB",direction:"buy",strength:"weak",reason:"near lower",confidence:0.6,at:t};
-  return {indicator:"BB",direction:"neutral",strength:"neutral",reason:"inside",confidence:0.5,at:t};
+
+function stdev(a:number[], n:number){
+  const out = Array(a.length).fill(NaN);
+  const m = sma(a,n);
+  let win:number[] = [];
+  for(let i=0;i<a.length;i++){
+    win.push(a[i]);
+    if(win.length>n) win.shift();
+    if(win.length===n){
+      const mu = m[i];
+      let v=0;
+      for(const x of win){ const d=x-mu; v+=d*d; }
+      out[i] = Math.sqrt(v/n);
+    }
+  }
+  return out;
+}
+
+export function computeBB(ohlc:OHLC, win=20, k=2, kWeak=1.5):BBResult{
+  const c = ohlc.close;
+  const mid = sma(c,win);
+  const sd  = stdev(c,win);
+  const up  = c.map((_,i)=> mid[i] + k*sd[i]);
+  const lo  = c.map((_,i)=> mid[i] - k*sd[i]);
+  const upWeak = c.map((_,i)=> mid[i] + kWeak*sd[i]);
+  const loWeak = c.map((_,i)=> mid[i] - kWeak*sd[i]);
+
+  const nearPct = 0.005;
+
+  const buyStrong:number[] = [];
+  const buyWeak:number[] = [];
+  const sellStrong:number[] = [];
+  const sellWeak:number[] = [];
+
+  let last:Signal|null = null;
+
+  for(let i=0;i<c.length;i++){
+    const price = c[i];
+    const U = up[i], L = lo[i], Uw=upWeak[i], Lw=loWeak[i];
+    if(Number.isNaN(U) || Number.isNaN(L)) { buyStrong.push(NaN); buyWeak.push(NaN); sellStrong.push(NaN); sellWeak.push(NaN); continue; }
+
+    const nearU = Math.abs(price-U)/price <= nearPct;
+    const nearL = Math.abs(price-L)/price <= nearPct;
+
+    if(price >= U){
+      sellStrong.push(price); sellWeak.push(NaN); buyStrong.push(NaN); buyWeak.push(NaN);
+      last = { at:i, dir:"sell", strength:"strong", label:"BB: STRONG SELL", color:"#d93f3f" };
+    }else if(price <= L){
+      buyStrong.push(price); buyWeak.push(NaN); sellStrong.push(NaN); sellWeak.push(NaN);
+      last = { at:i, dir:"buy", strength:"strong", label:"BB: STRONG BUY", color:"#1a7f37" };
+    }else if(price >= Uw || nearU){
+      sellWeak.push(price); sellStrong.push(NaN); buyStrong.push(NaN); buyWeak.push(NaN);
+      last = { at:i, dir:"sell", strength:"weak", label:"BB: weak sell", color:"#e07a7a" };
+    }else if(price <= Lw || nearL){
+      buyWeak.push(price); buyStrong.push(NaN); sellStrong.push(NaN); sellWeak.push(NaN);
+      last = { at:i, dir:"buy", strength:"weak", label:"BB: weak buy", color:"#62c66b" };
+    }else{
+      buyStrong.push(NaN); buyWeak.push(NaN); sellStrong.push(NaN); sellWeak.push(NaN);
+    }
+  }
+
+  return { last, buyStrong, buyWeak, sellStrong, sellWeak, upper:up, middle:mid, lower:lo };
 }
