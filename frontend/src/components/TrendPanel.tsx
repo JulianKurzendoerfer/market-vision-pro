@@ -4,7 +4,7 @@ import Plotly from "plotly.js-dist-min";
 import {computeTrend,TrendInput} from "../lib/trend";
 import BBSignal from "./BBSignal";
 
-import SignalsHub from './SignalsHub.tsx';
+import SignalsHub from './SignalsHub';
 const Plot=PlotFactory(Plotly as any);
 type Props={height?:number};
 function probe():TrendInput|null{const el=document.querySelector(".js-plotly-plot") as any;if(!el)return null;const fd:any[]=el._fullData||[];const cs=fd.find((t:any)=>t.type==="candlestick");if(cs&&cs.x&&cs.close&&cs.high&&cs.low){const n=Math.min(cs.x.length,cs.close.length,cs.high.length,cs.low.length);const time=Array.from({length:n},(_,i)=>new Date(cs.x[i]).getTime());const close=cs.close.slice(0,n).map(Number);const high=cs.high.slice(0,n).map(Number);const low=cs.low.slice(0,n).map(Number);return{time,close,high,low}}const lt=fd.find((t:any)=>String(t.name||"").toLowerCase().includes("close"));if(lt&&lt.x&&lt.y){const n=Math.min(lt.x.length,lt.y.length);const time=Array.from({length:n},(_,i)=>new Date(lt.x[i]).getTime());const close=lt.y.slice(0,n).map(Number);return{time,close,high:close.slice(),low:close.slice()}}return null}
