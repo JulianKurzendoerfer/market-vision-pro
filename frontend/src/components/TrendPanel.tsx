@@ -4,11 +4,9 @@ import Plotly from "plotly.js-dist-min";
 import {computeTrend,TrendInput} from "../lib/trend";
 import BBSignal from "./BBSignal";
 
-import SignalsHub from './SignalsHub';
 const Plot=PlotFactory(Plotly as any);
 type Props={height?:number};
 function probe():TrendInput|null{const el=document.querySelector(".js-plotly-plot") as any;if(!el)return null;const fd:any[]=el._fullData||[];const cs=fd.find((t:any)=>t.type==="candlestick");if(cs&&cs.x&&cs.close&&cs.high&&cs.low){const n=Math.min(cs.x.length,cs.close.length,cs.high.length,cs.low.length);const time=Array.from({length:n},(_,i)=>new Date(cs.x[i]).getTime());const close=cs.close.slice(0,n).map(Number);const high=cs.high.slice(0,n).map(Number);const low=cs.low.slice(0,n).map(Number);return{time,close,high,low}}const lt=fd.find((t:any)=>String(t.name||"").toLowerCase().includes("close"));if(lt&&lt.x&&lt.y){const n=Math.min(lt.x.length,lt.y.length);const time=Array.from({length:n},(_,i)=>new Date(lt.x[i]).getTime());const close=lt.y.slice(0,n).map(Number);return{time,close,high:close.slice(),low:close.slice()}}return null}
 export default function TrendPanel({height=220}:Props){const [data,setData]=useState<any[]>([]);const [layout,setLayout]=useState<any>({height,margin:{l:40,r:10,t:10,b:20},showlegend:false});useEffect(()=>{const redraw=()=>{const o=probe();if(!o)return;const tr=computeTrend(o,10,0.01);const x=o.time.map(t=>new Date(t));const closeTrace:any={x,y:o.close,mode:"lines",name:"Close",line:{width:1.4}};const lowsTrace:any=tr.lows.length?{x:tr.lows.map(i=>x[i]),y:tr.lows.map(i=>o.close[i]),mode:"markers",name:"Lows", visible:false,marker:{symbol:"triangle-down",size:11}}:null;const highsTrace:any=tr.highs.length?{x:tr.highs.map(i=>x[i]),y:tr.highs.map(i=>o.close[i]),mode:"markers",name:"Highs", visible:false,marker:{symbol:"triangle-up",size:11}}:null;const shapes=tr.levels.map((lvl,i)=>({type:"line",xref:"x",yref:"y",x0:x[0],x1:x[x.length-1],y0:lvl,y1:lvl,line:{width:1.5+3*tr.strength[i]}}));setData([closeTrace].concat(lowsTrace?[lowsTrace]:[]).concat(highsTrace?[highsTrace]:[]));setLayout((l:any)=>({...l,shapes}))};redraw();const iv=setInterval(redraw,1500);return()=>clearInterval(iv)},[]);return <div style={{position:"relative"}}>
-  <SignalsHub corner="tl" />
   <Plot data={data} layout={layout} style={{width:"100%"}}/>
 </div>}

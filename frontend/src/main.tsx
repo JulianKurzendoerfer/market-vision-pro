@@ -1,26 +1,16 @@
-import { initHud } from "./boot/index";
-import "./boot";
-import TrendPanel from './components/TrendPanel';
-import { createRoot } from 'react-dom/client'
-import React from 'react'
-import App from './App'
-const el = document.getElementById('root')!
-initHud();
-createRoot(el).initHud();
-render(<React.StrictMode><App/></React.StrictMode>)
 
-if (typeof document!=='undefined') {
-  const id='mv-trendpanel-root';
-  if (!document.getElementById(id)) {
-    const el=document.createElement('div');
-    el.id=id; el.style.margin='12px 16px';
-    document.body.appendChild(el);
-    createRoot(el).render(<TrendPanel />);
+import React from "react";
+import { createRoot } from "react-dom/client";
+
+const el = document.getElementById("root")!;
+async function boot(){
+  let App: any;
+  try {
+    const mod = await import("./components/ChartDashboard");
+    App = mod.default ?? (()=>null);
+  } catch {
+    App = () => <div style={{padding:16,fontFamily:"system-ui"}}>App läuft – ChartDashboard.tsx nicht gefunden.</div>;
   }
+  createRoot(el).render(<React.StrictMode><App/></React.StrictMode>);
 }
-
-import { mountTrendPanel } from './mountTrend';
-mountTrendPanel();
-
-import { hookHideHighLow } from './hideHighLow';
-hookHideHighLow();
+boot();
