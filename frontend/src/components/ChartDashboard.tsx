@@ -1,16 +1,10 @@
 import React,{useEffect,useMemo,useState} from 'react'
 import PlotFactory from 'react-plotly.js/factory'
 import Plotly from 'plotly.js-dist-min'
-import {ema,bb,rsi,stochKDL,macd,pivots,OHLC} from '../lib/indicators'
+import {fetchOHLC} from '../lib/data'
+import {ema,bb,rsi,stochKDL,macd,pivots} from '../lib/indicators'
 const Plot=PlotFactory(Plotly as any)
-
-function useOHLC():OHLC|null{
-  const el=document.querySelector('.js-plotly-plot') as any
-  if(!el||!el.data||!el.data.length) return null
-  const c=el.data.find((t:any)=>t.type==='candlestick')||el.data[0]
-  if(!c||!c.x||!c.close) return null
-  return {time:c.x.map((t:any)=>+new Date(t)),open:c.open,high:c.high,low:c.low,close:c.close}
-}
+type OHLC={time:number[];open:number[];high:number[];low:number[];close:number[]}
 
 export default function ChartDashboard(){
   const [showEMA,setShowEMA]=useState(true)
@@ -20,8 +14,11 @@ export default function ChartDashboard(){
   const [showSTO,setShowSTO]=useState(true)
   const [showTrend,setShowTrend]=useState(true)
   const [ticker,setTicker]=useState<string>(new URLSearchParams(location.search).get('t')||'AAPL')
+  const [ohlc,setOHLC]=useState<OHLC|null>(null)
+  const [loading,setLoading]=useState(false)
 
-  const ohlc=useOHLC()
+  async function load(t:string){setLoading(true);try{const o=await fetchOHLC(t);setOHLC(o)}catch(e){setOHLC(null)}setLoading(false)}
+  useEffect(()=>{load(ticker)},[])
 
   const studies=useMemo(()=>{
     if(!ohlc) return null
@@ -32,58 +29,30 @@ export default function ChartDashboard(){
     const st=stochKDL(high,low,close,14,3)
     const M=macd(close,12,26,9)
     const piv=pivots(ohlc,10,0.01)
-    return {time,e20,e50,e200,bands,r,st,M,piv}
+    return {time,e20,e50,e200,bands,r,st,M,piv,high,low,close}
   },[JSON.stringify(ohlc)])
 
   useEffect(()=>{
     const root=document.getElementById('root-plot') as any
     if(!root) return
-    const src:any=document.querySelector('.js-plotly-plot') as any
-    if(!src||!src.data) return
-
     const traces:any[]=[]
     const layout:any={grid:{rows:4,columns:1,pattern:'independent',roworder:'top to bottom'},margin:{l:40,r:10,t:10,b:20},showlegend:false}
 
-    if(src.data.length){
-      const base=JSON.parse(JSON.stringify(src.data))
-      for(const t of base){ if(t.mode==='markers') t.visible=false; if(t.type==='candlestick'){t.increasing={line:{width:1}};t.decreasing={line:{width:1}}} }
-      for(const t of base) t.yaxis='y'
-      traces.push(...base)
+    if(ohlc){
+      const t=ohlc.time.map(x=>new Date(x))
+      traces.push({x:t,open:ohlc.open,high:ohlc.high,low:ohlc.low,close:ohlc.close,type:'candlestick',yaxis:'y',name:'Price',increasing:{line:{width:1}},decreasing:{line:{width:1}}})
+      layout.yaxis={domain:[0.55,1]}
     }
 
     if(studies){
       const {time,e20,e50,e200,bands}=studies
-      if(showEMA){
-        traces.push({x:time,y:e20,type:'scatter',mode:'lines',line:{width:1},name:'EMA20',yaxis:'y'})
-        traces.push({x:time,y:e50,type:'scatter',mode:'lines',line:{width:1},name:'EMA50',yaxis:'y'})
-        traces.push({x:time,y:e200,type:'scatter',mode:'lines',line:{width:1},name:'EMA200',yaxis:'y'})
-      }
-      if(showBB){
-        traces.push({x:time,y:bands.up,type:'scatter',mode:'lines',line:{width:1},name:'BB up',yaxis:'y'})
-        traces.push({x:time,y:bands.lo,type:'scatter',mode:'lines',line:{width:1},name:'BB lo',yaxis:'y'})
-      }
-      layout.yaxis={domain:[0.55,1]}
-
-      if(showRSI&&studies.r){
-        traces.push({x:time,y:studies.r,type:'scatter',mode:'lines',line:{width:1},name:'RSI',yaxis:'y2'})
-        layout.yaxis2={domain:[0.4,0.54],range:[0,100]}
-      }
-      if(showSTO&&studies.st){
-        traces.push({x:time,y:studies.st.k,type:'scatter',mode:'lines',line:{width:1},name:'%K',yaxis:'y3'})
-        traces.push({x:time,y:studies.st.d,type:'scatter',mode:'lines',line:{width:1},name:'%D',yaxis:'y3'})
-        layout.yaxis3={domain:[0.25,0.39],range:[0,100]}
-      }
-      if(showMACD&&studies.M){
-        traces.push({x:time,y:studies.M.h,type:'bar',name:'MACD hist',yaxis:'y4'})
-        traces.push({x:time,y:studies.M.m,type:'scatter',mode:'lines',line:{width:1},name:'MACD',yaxis:'y4'})
-        traces.push({x:time,y:studies.M.sig,type:'scatter',mode:'lines',line:{width:1},name:'Signal',yaxis:'y4'})
-        layout.yaxis4={domain:[0.05,0.24]}
-      }
-      if(showTrend&&studies.piv){
-        for(const h of studies.piv.highs){traces.push({x:[studies.time[h.i]],y:[h.p],yaxis:'y',type:'scatter',mode:'markers',marker:{symbol:'triangle-down',size:7},name:'H'})}
-        for(const l of studies.piv.lows){traces.push({x:[studies.time[l.i]],y:[l.p],yaxis:'y',type:'scatter',mode:'markers',marker:{symbol:'triangle-up',size:7},name:'L'})}
-        for(const lv of studies.piv.levels){traces.push({x:[studies.time[0],studies.time[studies.time.length-1]],y:[lv.level,lv.level],type:'scatter',mode:'lines',line:{width:1},name:'Level',yaxis:'y'})}
-      }
+      const xt=time.map(x=>new Date(x))
+      if(showEMA){traces.push({x:xt,y:e20,type:'scatter',mode:'lines',line:{width:1},name:'EMA20',yaxis:'y'});traces.push({x:xt,y:e50,type:'scatter',mode:'lines',line:{width:1},name:'EMA50',yaxis:'y'});traces.push({x:xt,y:e200,type:'scatter',mode:'lines',line:{width:1},name:'EMA200',yaxis:'y'})}
+      if(showBB){traces.push({x:xt,y:bands.up,type:'scatter',mode:'lines',line:{width:1},name:'BB up',yaxis:'y'});traces.push({x:xt,y:bands.lo,type:'scatter',mode:'lines',line:{width:1},name:'BB lo',yaxis:'y'})}
+      if(showRSI&&studies.r){traces.push({x:xt,y:studies.r,type:'scatter',mode:'lines',line:{width:1},name:'RSI',yaxis:'y2'});layout.yaxis2={domain:[0.4,0.54],range:[0,100]}}
+      if(showSTO&&studies.st){traces.push({x:xt,y:studies.st.k,type:'scatter',mode:'lines',line:{width:1},name:'%K',yaxis:'y3'});traces.push({x:xt,y:studies.st.d,type:'scatter',mode:'lines',line:{width:1},name:'%D',yaxis:'y3'});layout.yaxis3={domain:[0.25,0.39],range:[0,100]}}
+      if(showMACD&&studies.M){traces.push({x:xt,y:studies.M.h,type:'bar',name:'MACD hist',yaxis:'y4'});traces.push({x:xt,y:studies.M.m,type:'scatter',mode:'lines',line:{width:1},name:'MACD',yaxis:'y4'});traces.push({x:xt,y:studies.M.sig,type:'scatter',mode:'lines',line:{width:1},name:'Signal',yaxis:'y4'});layout.yaxis4={domain:[0.05,0.24]}}
+      if(showTrend){for(const h of studies.piv.highs){traces.push({x:[xt[h.i]],y:[h.p],yaxis:'y',type:'scatter',mode:'markers',marker:{symbol:'triangle-down',size:7},name:'H'})}for(const l of studies.piv.lows){traces.push({x:[xt[l.i]],y:[l.p],yaxis:'y',type:'scatter',mode:'markers',marker:{symbol:'triangle-up',size:7},name:'L'})}for(const lv of studies.piv.levels){traces.push({x:[xt[0],xt[xt.length-1]],y:[lv.level,lv.level],type:'scatter',mode:'lines',line:{width:1},name:'Level',yaxis:'y'})}}
     }
 
     Plotly.react(root,traces,layout,{responsive:true})
@@ -101,7 +70,7 @@ export default function ChartDashboard(){
         <label style={{display:'inline-flex',gap:6,alignItems:'center'}}><input type="checkbox" checked={showTrend} onChange={e=>setShowTrend(e.target.checked)}/>TrendPanel</label>
         <div style={{marginLeft:'auto',display:'inline-flex',gap:6}}>
           <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="Ticker" style={{padding:'4px 8px',width:90}}/>
-          <button onClick={()=>{const u=new URL(location.href);u.searchParams.set('t',ticker);location.href=u.toString()}}>Refresh</button>
+          <button onClick={()=>{const u=new URL(location.href);u.searchParams.set('t',ticker);history.replaceState(null,'',u.toString());load(ticker)}} disabled={loading}>{loading?'...':'Refresh'}</button>
         </div>
       </div>
       <div id="root-plot" style={{height:'72vh'}} />
