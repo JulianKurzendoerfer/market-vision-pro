@@ -1,10 +1,11 @@
 import React, { useMemo } from "react";
 import Plotly from "plotly.js-dist-min";
 import createPlotlyComponent from "react-plotly.js/factory";
-import { computeBB } from "../signals/indicators/bb";
-import type { OHLC } from "../signals/types";
+import { computeBB } from "../signals/aggregate";
 
 const Plot:any = createPlotlyComponent(Plotly);
+
+type OHLC = { time:number[]; open:number[]; high:number[]; low:number[]; close:number[]; };
 
 function probeOHLC():OHLC{
   const w:any = (window as any);
@@ -24,9 +25,7 @@ function probeOHLC():OHLC{
   const n=200, now=Date.now(); const day=24*3600*1000;
   const time:number[]=[]; const close:number[]=[]; const open:number[]=[]; const high:number[]=[]; const low:number[]=[];
   let p=200;
-  for(let i=n-1;i>=0;i--){
-    time.push(now - i*day);
-  }
+  for(let i=n-1;i>=0;i--) time.push(now - i*day);
   for(let i=0;i<n;i++){
     const step=(Math.random()-0.5)*2;
     const o=p; const c=p+step; const h=Math.max(o,c)+Math.random(); const l=Math.min(o,c)-Math.random();
@@ -59,8 +58,8 @@ export default function ChartDashboard(){
     <div style={{padding:16,fontFamily:"system-ui, -apple-system, Segoe UI, Roboto"}}>
       <h1 style={{margin:"0 0 12px"}}>Market Vision Pro</h1>
       <div style={{position:"relative"}}>
-        <div style={{position:"absolute", left:10, top:6, zIndex:10, background:badge.color, color:"#fff", padding:"4px 8px", borderRadius:6, fontSize:12}}>
-          {badge.label}
+        <div style={{position:"absolute", left:10, top:6, zIndex:10, background:(badge as any).color, color:"#fff", padding:"4px 8px", borderRadius:6, fontSize:12}}>
+          {(badge as any).label}
         </div>
         <Plot data={[candle, buyS, buyW, selS, selW]} layout={layout} style={{width:"100%"}} />
       </div>

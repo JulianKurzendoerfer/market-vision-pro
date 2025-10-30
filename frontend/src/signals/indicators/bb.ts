@@ -1,4 +1,4 @@
-import { OHLC, BBResult, Signal } from "../types";
+import type { OHLC, Signal } from "../types";
 
 function sma(a:number[], n:number){
   const out = Array(a.length).fill(NaN);
@@ -28,7 +28,7 @@ function stdev(a:number[], n:number){
   return out;
 }
 
-export function computeBB(ohlc:OHLC, win=20, k=2, kWeak=1.5):BBResult{
+export function computeBB(ohlc:OHLC, win=20, k=2, kWeak=1.5){
   const c = ohlc.close;
   const mid = sma(c,win);
   const sd  = stdev(c,win);
@@ -72,4 +72,8 @@ export function computeBB(ohlc:OHLC, win=20, k=2, kWeak=1.5):BBResult{
   }
 
   return { last, buyStrong, buyWeak, sellStrong, sellWeak, upper:up, middle:mid, lower:lo };
+}
+
+export function bbSignal(ohlc:OHLC, win=20, k=2, kWeak=1.5): Signal | null {
+  return computeBB(ohlc, win, k, kWeak).last;
 }
