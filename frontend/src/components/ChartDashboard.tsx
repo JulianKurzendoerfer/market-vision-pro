@@ -1,7 +1,8 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import Plotly from 'plotly.js-dist-min';
 import {fetchOHLC} from '../lib/ohlc';
-import {bbSignals,bbBadge} from '../signals/bb';
+import {bbSignals,bbBadge} from '../signals';
+import { bbSignal } from '../signals';
 
 type Toggles=Record<'EMAs'|'Bollinger'|'RSI'|'Stoch'|'MACD'|'TrendPanel'|'BBSig',boolean>;
 
@@ -10,7 +11,7 @@ function ema(a:number[],n:number){let k=2/(n+1), out:number[]=[]; let prev=a[0]?
 function rsi(c:number[],n=14){let g=0,l=0; const r:number[]=[NaN]; for(let i=1;i<c.length;i++){const d=c[i]-c[i-1]; g+=Math.max(0,d); l+=Math.max(0,-d);
  if(i>=n){const d2=c[i-n+1]-c[i-n]; g-=Math.max(0,d2); l-=Math.max(0,-d2)} r.push(i>=n? 100-100/(1+(g/(l||1))) : NaN)} return r}
 function stoch(h:number[],l:number[],c:number[],n=14,k=3,d=3){const raw:number[]=[]; for(let i=0;i<c.length;i++){let hi=-Infinity, lo=Infinity; for(let j=Math.max(0,i-n+1);j<=i;j++){hi=Math.max(hi,h[j]); lo=Math.min(lo,l[j])} raw.push(((c[i]-lo)/(hi-lo||1))*100)} const K=sma(raw,k), D=sma(K,d); return {K,D}}
-function macd(c:number[],f=12,s=26,sg=9){const F=ema(c,f), S=ema(c,s), M=F.map((v,i)=>v-(S[i]??0)), Sig=ema(M,sg); return {M,Sig,Hist:M.map((v,i)=>v-(Sig[i]??0))}}
+function macd(c:number[],f=12,s=26,sg=9){const F=ema(c,f), S=ema(c,s), M=F.map((v: any, i: number)=>v-(S[i]??0)), Sig=ema(M,sg); return {M,Sig,Hist:M.map((v: any, i: number)=>v-(Sig[i]??0))}}
 function extremaLevels(close:number[],w=10,limit=8){const lvl=new Map<number,number>(); for(let i=w;i<close.length-w;i++){const c=close[i]; let isMax=true,isMin=true; for(let j=i-w;j<=i+w;j++){if(close[j]>c)isMax=false; if(close[j]<c)isMin=false} if(isMax||isMin){lvl.set(Math.round(c*100)/100,(lvl.get(Math.round(c*100)/100)||0)+1)}} return [...lvl.entries()].sort((a,b)=>b[1]-a[1]).slice(0,limit).map(([p])=>p)}
 
 export default function ChartDashboard(){
@@ -31,12 +32,12 @@ export default function ChartDashboard(){
     traces.push({x, open, high, low, close, type:'candlestick', xaxis:'x', yaxis:'y', name:'Price'});
 
     // EMAs kompakt
-    if(tog.EMAs){ [8,21,50,200].forEach((n,i)=>traces.push({x,y:ema(close,n),type:'scatter',mode:'lines',line:{width:i===3?2:1},name:'EMA'+n,xaxis:'x',yaxis:'y'})); }
+    if(tog.EMAs){ [8,21,50,200].forEach((n: any, i: number)=>traces.push({x,y:ema(close,n),type:'scatter',mode:'lines',line:{width:i===3?2:1},name:'EMA'+n,xaxis:'x',yaxis:'y'})); }
 
     // Bollinger
     if(tog.Bollinger){
-      const m=sma(close,20); const dev=sma(close.map((c,i)=>Math.abs(c-(m[i]||c))),20);
-      const up=m.map((v,i)=>v+2*(dev[i]||0)), lo=m.map((v,i)=>v-2*(dev[i]||0));
+      const m=sma(close,20); const dev=sma(close.map((c: any, i: number)=>Math.abs(c-(m[i]||c))),20);
+      const up=m.map((v: any, i: number)=>v+2*(dev[i]||0)), lo=m.map((v: any, i: number)=>v-2*(dev[i]||0));
       traces.push({x,y:up,type:'scatter',mode:'lines',line:{width:1},xaxis:'x',yaxis:'y',name:'BB up'});
       traces.push({x,y:m, type:'scatter',mode:'lines',line:{width:1,dash:'dot'},xaxis:'x',yaxis:'y',name:'BB mid'});
       traces.push({x,y:lo,type:'scatter',mode:'lines',line:{width:1},xaxis:'x',yaxis:'y',name:'BB low'});
