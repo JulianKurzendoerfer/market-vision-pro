@@ -1,0 +1,7 @@
+:root{ --card-bg:#ffffff; --card-brd:#e6e8eb; }
+*{ box-sizing:border-box; }
+.wrap{ max-width:1200px; margin:0 auto; padding:12px; }
+.bar{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+.card{ background:var(--card-bg); border:1px solid var(--card-brd); border-radius:12px; padding:6px 6px 0; margin-bottom:10px; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+.plot{ position:relative; }
+.bb-badge{ position:absolute; left:10px; top:10px; padding:2px 8px; color:#ffffff; font-size:12px; border-radius:999px; }

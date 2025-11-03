@@ -1,10 +1,93 @@
-export type OHLC={time:number;open:number;high:number;low:number;close:number}
-export function sma(a:number[],p:number){const out:number[]=[];let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=p)s-=a[i-p];out.push(i>=p-1?s/p:NaN)}return out}
-export function ema(a:number[],p:number){const out:number[]=[];const k=2/(p+1);let e=a[0]??0;for(let i=0;i<a.length;i++){e=i===0?a[i]:a[i]*k+e*(1-k);out.push(e)}return out}
-export function std(a:number[],p:number){const out:number[]=[];let s=0,ss=0;for(let i=0;i<a.length;i++){const v=a[i];s+=v;ss+=v*v;if(i>=p){s-=a[i-p];ss-=a[i-p]*a[i-p]}if(i>=p-1){const m=s/p;out.push(Math.sqrt(Math.max(0,ss/p-m*m)))}else out.push(NaN)}return out}
-export function bollinger(close:number[],p=20,k=2){const m=sma(close,p);const sd=std(close,p);const up:number[]=[],lo:number[]=[];for(let i=0;i<close.length;i++){up.push(m[i]+k*sd[i]);lo.push(m[i]-k*sd[i])}return {mid:m,upper:up,lower:lo}}
-export function rsi(close:number[],p=14){const out:number[]=[];let up=0,down=0;for(let i=1;i<close.length;i++){const ch=close[i]-close[i-1];const g=Math.max(0,ch),l=Math.max(0,-ch);if(i<=p){up+=g;down+=l;out.push(NaN);continue}if(i===p+1){let rs=(up/p)/(down/p||1e-9);out.push(100-100/(1+rs));continue}up=(up*(p-1)+g)/p;down=(down*(p-1)+l)/p;const rs2=up/(down||1e-9);out.push(100-100/(1+rs2))}out.unshift(NaN);return out}
-export function stoch(high:number[],low:number[],close:number[],k=14,d=3){const K:number[]=[];for(let i=0;i<close.length;i++){const a=Math.max(0,i-k+1);let hi=-Infinity,lo=Infinity;for(let j=a;j<=i;j++){hi=Math.max(hi,high[j]);lo=Math.min(lo,low[j])}K.push(i>=k-1?((close[i]-lo)/(hi-lo||1e-9))*100:NaN)}const D=sma(K,d);return {K,D}}
-export function macd(close:number[],fast=12,slow=26,signal=9){const f=ema(close,fast);const s=ema(close,slow);const m:number[]=[];for(let i=0;i<close.length;i++)m.push(f[i]-s[i]);const sig=ema(m,signal);const hist:number[]=[];for(let i=0;i<close.length;i++)hist.push(m[i]-sig[i]);return {macd:m,signal:sig,hist}}
-export function extrema(h:number[],l:number[],w=10){const highs:{idx:number;price:number}[]=[];const lows:{idx:number;price:number}[]=[];for(let i=w;i<h.length-w;i++){let isH=true,isL=true;for(let j=i-w;j<=i+w;j++){if(h[i]<h[j])isH=false;if(l[i]>l[j])isL=false;if(!isH&&!isL)break}if(isH)highs.push({idx:i,price:h[i]});if(isL)lows.push({idx:i,price:l[i]})}return {highs,lows}}
-export function clusterLevels(vals:number[],tolPct=1){const t=tolPct/100;const s=vals.slice().sort((a,b)=>a-b);const cl:number[]=[];for(const v of s){if(cl.length===0||Math.abs(v-cl[cl.length-1])>cl[cl.length-1]*t)cl.push(v);else cl[cl.length-1]=(cl[cl.length-1]+v)/2}return cl}
+export function sma(a:number[], w:number): number[] {
+  const out:number[] = new Array(a.length).fill(NaN)
+  let s = 0
+  for (let i=0;i<a.length;i++){
+    s += a[i]
+    if (i>=w) s -= a[i-w]
+    if (i>=w-1) out[i] = s / w
+  }
+  return out
+}
+export function ema(a:number[], w:number): number[] {
+  const out:number[] = new Array(a.length).fill(NaN)
+  const k = 2/(w+1)
+  let e = 0, start=false, seed=0
+  for(let i=0;i<a.length;i++){
+    seed += a[i]
+    if (i===w-1){ e = seed/w; out[i]=e; start=true; continue }
+    if (!start) continue
+    e = a[i]*k + e*(1-k)
+    out[i]=e
+  }
+  return out
+}
+export function stddev(a:number[], w:number): number[] {
+  const out:number[] = new Array(a.length).fill(NaN)
+  const q:number[] = []
+  let sum=0, sum2=0
+  for (let i=0;i<a.length;i++){
+    q.push(a[i]); sum+=a[i]; sum2+=a[i]*a[i]
+    if (q.length>w){ const x=q.shift()!; sum-=x; sum2-=x*x }
+    if (q.length===w){
+      const m = sum/w
+      const v = Math.max(0, sum2/w - m*m)
+      out[i] = Math.sqrt(v)
+    }
+  }
+  return out
+}
+export function bollinger(close:number[], w=20, k=2){
+  const basis = sma(close,w)
+  const sd = stddev(close,w)
+  const upper = basis.map((b,i)=> (isFinite(b)&&isFinite(sd[i])? b + k*sd[i] : NaN))
+  const lower = basis.map((b,i)=> (isFinite(b)&&isFinite(sd[i])? b - k*sd[i] : NaN))
+  return {basis, upper, lower}
+}
+export function rsi(close:number[], p=14){
+  const out:number[] = new Array(close.length).fill(NaN)
+  let ag=0, al=0, rs=0
+  for(let i=1;i<close.length;i++){
+    const ch = close[i]-close[i-1]
+    const g = Math.max(ch,0), l = Math.max(-ch,0)
+    if (i<=p){ ag+=g; al+=l; if(i===p){ ag/=p; al/=p; rs = al===0? 100 : ag/al; out[i]= 100 - 100/(1+rs) } }
+    else { ag = (ag*(p-1)+g)/p; al = (al*(p-1)+l)/p; rs = al===0? 100 : ag/al; out[i]= 100 - 100/(1+rs) }
+  }
+  return out
+}
+export function stoch(high:number[], low:number[], close:number[], p=14, d=3){
+  const k:number[] = new Array(close.length).fill(NaN)
+  for(let i=0;i<close.length;i++){
+    const s = Math.max(0,i-p+1), e=i+1
+    let hi=-Infinity, lo=Infinity
+    for(let j=s;j<e;j++){ if (high[j]>hi) hi=high[j]; if (low[j]<lo) lo=low[j] }
+    const denom = hi-lo
+    k[i] = denom>0? 100*(close[i]-lo)/denom : NaN
+  }
+  const dline = sma(k, d)
+  return {k, d: dline}
+}
+export function macd(close:number[], fast=12, slow=26, sig=9){
+  const f = ema(close, fast)
+  const s = ema(close, slow)
+  const line = close.map((_,i)=> (isFinite(f[i])&&isFinite(s[i])? f[i]-s[i] : NaN))
+  const seed:number[]=[]; for(const v of line){ if(isFinite(v)) seed.push(v) }
+  const sigArr = ema(seed, sig)
+  const signal:number[] = new Array(line.length).fill(NaN)
+  let si=0; for(let i=0;i<line.length;i++){ if (isFinite(line[i])) { signal[i] = sigArr[si++] ?? NaN } }
+  const hist = line.map((x,i)=> (isFinite(x)&&isFinite(signal[i])? x - signal[i] : NaN))
+  return { line, signal, hist }
+}
+export function pivots(high:number[], low:number[], left=3, right=3){
+  const ph:number[] = []; const pl:number[] = []
+  for(let i=left;i<high.length-right;i++){
+    let isHigh=true, isLow=true
+    for(let j=i-left;j<=i+right;j++){
+      if (high[j]>high[i]) isHigh=false
+      if (low[j]<low[i]) isLow=false
+      if(!isHigh && !isLow) break
+    }
+    ph.push(isHigh? i : NaN)
+    pl.push(isLow? i : NaN)
+  }
+  return { pivotHighIdx: ph, pivotLowIdx: pl }
+}
