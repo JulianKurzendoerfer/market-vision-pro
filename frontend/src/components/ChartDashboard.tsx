@@ -3,7 +3,7 @@ import axios from 'axios'
 import dayjs from 'dayjs'
 import createPlotlyComponent from 'react-plotly.js/factory'
 import Plotly from 'plotly.js-dist-min'
-import { OHLC, bollinger, ema, macd, rsi, stoch, extrema, clusterLevels, sma } from '../lib/indicators'
+import { OHLC, bollinger, ema, macd, rsi, stoch, extrema, clusterLevels } from '../lib/indicators'
 import { bbSignal } from '../signals'
 const Plot=createPlotlyComponent(Plotly)
 type Tog={EMAs:boolean;Bollinger:boolean;RSI:boolean;Stoch:boolean;MACD:boolean;TrendPanel:boolean;BBSig:boolean}
@@ -19,7 +19,7 @@ export default function ChartDashboard(){
   const traces=useMemo(()=>{if(!data.length)return {traces:[],layout:{}};const t=data.map(d=>d.time);const o=data.map(d=>d.open);const h=data.map(d=>d.high);const l=data.map(d=>d.low);const c=data.map(d=>d.close)
     const rows=[true,tog.RSI,tog.Stoch,tog.MACD,tog.TrendPanel].filter(Boolean).length
     const rowIndex={price:1,rsi:tog.RSI?2:0,stoch:(tog.RSI?2:1)+(tog.Stoch?1:0),macd:0,trend:0}
-    rowIndex.macd=(tog.RSI?1:0)+(tog.Stoch?1:0)?(tog.RSI?2:1)+(tog.Stoch?1:0)+1: (tog.RSI?2:1)
+    rowIndex.macd=(tog.RSI?1:0)+(tog.Stoch?1:0)?(tog.RSI?2:1)+(tog.Stoch?1:0)+1:(tog.RSI?2:1)
     rowIndex.trend=rows
     const priceTrace:any={type:'candlestick',x:t,open:o,high:h,low:l,close:c,name:'Price',xaxis:pane(1).x,yaxis:pane(1).y,hoverinfo:'x+y'}
     const tr:any[]=[priceTrace]
@@ -49,7 +49,7 @@ export default function ChartDashboard(){
         <label><input type="checkbox" checked={tog.MACD} onChange={e=>setTog({...tog,MACD:e.target.checked})}/> MACD</label>
         <label><input type="checkbox" checked={tog.TrendPanel} onChange={e=>setTog({...tog,TrendPanel:e.target.checked})}/> TrendPanel</label>
         <label><input type="checkbox" checked={tog.BBSig} onChange={e=>setTog({...tog,BBSig:e.target.checked})}/> BB Signals</label>
-        <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;width:90px"/>
+        <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} style={{padding:'6px 8px',border:'1px solid #ddd',borderRadius:6,width:90}}/>
         <button onClick={()=>setTicker(ticker)} style={{padding:'6px 10px',border:'1px solid #ddd',borderRadius:6,background:'#fafafa'}}>Refresh</button>
       </div>
       <div style={{position:'relative'}}>
