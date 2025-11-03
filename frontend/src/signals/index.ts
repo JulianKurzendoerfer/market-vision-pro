@@ -1,1 +1,1 @@
-export { bbSignal } from './indicators/bb';
+export { bbSignal } from './indicators/bb'
