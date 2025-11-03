@@ -1,61 +1,123 @@
-import React,{useEffect,useMemo,useState} from 'react'
-import axios from 'axios'
-import dayjs from 'dayjs'
-import createPlotlyComponent from 'react-plotly.js/factory'
-import Plotly from 'plotly.js-dist-min'
-import { OHLC, bollinger, ema, macd, rsi, stoch, extrema, clusterLevels } from '../lib/indicators'
-import { bbSignal } from '../signals'
-const Plot=createPlotlyComponent(Plotly)
-type Tog={EMAs:boolean;Bollinger:boolean;RSI:boolean;Stoch:boolean;MACD:boolean;TrendPanel:boolean;BBSig:boolean}
+import React, {useEffect, useMemo, useState} from "react";
+import Plot from "react-plotly.js";
+
+type OHLC = { time:number|string; open:number; high:number; low:number; close:number };
+
+function sma(arr:number[], n:number){const out:number[]=[];let s=0;for(let i=0;i<arr.length;i++){s+=arr[i];if(i>=n)s-=arr[i-n];out.push(i>=n-1?s/n:NaN);}return out;}
+function ema(arr:number[], n:number){const out:number[]=[];const k=2/(n+1);let e=arr[0]??0;for(let i=0;i<arr.length;i++){const v=arr[i];e=isFinite(v)?(v-e)*k+e:e;out.push(i?e:NaN);}return out;}
+function stdev(arr:number[], n:number){const out:number[]=[];let q:number[]=[];for(let i=0;i<arr.length;i++){q.push(arr[i]);if(q.length>n)q.shift();if(q.length<n){out.push(NaN);}else{const m=q.reduce((a,b)=>a+b,0)/n;out.push(Math.sqrt(q.reduce((a,b)=>a+(b-m)*(b-m),0)/n));}}return out;}
+function rsi(close:number[], n=14){const out:number[]=[];let ag=0,al=0;for(let i=1;i<close.length;i++){const ch=close[i]-close[i-1];const g=Math.max(ch,0), l=Math.max(-ch,0);if(i<=n){ag+=g;al+=l;out.push(NaN);continue;} if(i===n+1){ag/=n;al/=n;} else {ag=(ag*(n-1)+g)/n;al=(al*(n-1)+l)/n;} const rs=al===0?100:100-100/(1+ag/al);out.push(rs);}out.unshift(NaN);return out;}
+function bb(close:number[], n=20, k=2){const m=sma(close,n);const sd=stdev(close,n);const up:number[]=[], lo:number[]=[];for(let i=0;i<close.length;i++){up.push(isFinite(m[i])&&isFinite(sd[i])?m[i]+k*sd[i]:NaN);lo.push(isFinite(m[i])&&isFinite(sd[i])?m[i]-k*sd[i]:NaN);}return {mid:m, up, lo};}
+function macd(close:number[], fast=12, slow=26, sig=9){const f=ema(close,fast), s=ema(close,slow);const m=close.map((_,i)=> (isFinite(f[i])&&isFinite(s[i]))?f[i]-s[i]:NaN);const signal=ema(m.map(v=>isFinite(v)?v:0),sig);const hist=m.map((v,i)=> (isFinite(v)&&isFinite(signal[i]))?v-signal[i]:NaN);return {macd:m, signal, hist};}
+function stoch(high:number[], low:number[], close:number[], n=14, d=3){const k:number[]=[];for(let i=0;i<close.length;i++){const s=Math.max(0,i-n+1);const hh=Math.max(...high.slice(s,i+1));const ll=Math.min(...low.slice(s,i+1));k.push(i>=n-1? ((close[i]-ll)/(hh-ll))*100 : NaN);}const dline=sma(k,d);return {k, d:dline};}
+function extrema(high:number[], low:number[], look=10){const hIdx:number[]=[], lIdx:number[]=[];for(let i=look;i<high.length-look;i++){let isH=true,isL=true;for(let j=-look;j<=look;j++){if(high[i]<high[i+j]){isH=false;break;}}for(let j=-look;j<=look;j++){if(low[i]>low[i+j]){isL=false;break;}}if(isH)hIdx.push(i);if(isL)lIdx.push(i);}return {hIdx,lIdx};}
+
+async function fetchOHLC(ticker:string):Promise<OHLC[]>{
+  const qs = encodeURIComponent(ticker);
+  const urls = [`/api/ohlc?q=${qs}`, `/api/ohlc?t=${qs}`, `/api/candles?t=${qs}`];
+  for(const u of urls){
+    try{
+      const r = await fetch(u, {cache:"no-store"});
+      if(!r.ok) continue;
+      const j = await r.json();
+      const a = Array.isArray(j)? j : (j?.data||j?.candles||[]);
+      if(a?.length) return a as OHLC[];
+    }catch{}
+  }
+  return [];
+}
+
 export default function ChartDashboard(){
-  const [tog,setTog]=useState<Tog>({EMAs:true,Bollinger:true,RSI:true,Stoch:true,MACD:true,TrendPanel:true,BBSig:true})
-  const [ticker,setTicker]=useState<string>('AAPL')
-  const [data,setData]=useState<OHLC[]>([])
-  const [badge,setBadge]=useState<{label:string;color:string}|null>(null)
-  async function fetchOHLC(sym:string){const paths=[`/api/ohlc?t=${encodeURIComponent(sym)}`,'/api/candles?t='+encodeURIComponent(sym)];for(const p of paths){try{const r=await axios.get(p,{timeout:9000});if(Array.isArray(r.data)&&r.data.length>0)return r.data as OHLC[]}catch(e){}}const n=260,day=24*3600*1000,end=Date.now();const time:number[]=[];for(let i=n;i>0;i--)time.push(end-i*day);let price=200;const out:OHLC[]=[];for(const t of time){const drift=Math.random()*0.6-0.3;const vol=Math.random()*2;const open=price;const close=Math.max(1,open+drift+vol*(Math.random()-0.5));const high=Math.max(open,close)+Math.random()*1.5;const low=Math.min(open,close)-Math.random()*1.5;price=close;out.push({time:t,open:+open.toFixed(2),high:+high.toFixed(2),low:+low.toFixed(2),close:+close.toFixed(2)})}return out}
-  function pane(row:number){return row===1?{x:'x',y:'y'}:{x:'x'+row,y:'y'+row}}
-  function hline(y:number,row:number,color:string){return {type:'line',xref:'x'+(row===1?'':'')+row,yref:'y'+(row===1?'':'')+row,x0:data[0]?.time||0,x1:data[data.length-1]?.time||1,y0:y,y1:y,line:{color,width:1}}}
-  useEffect(()=>{(async()=>{const d=await fetchOHLC(ticker);setData(d)})()},[ticker])
-  const traces=useMemo(()=>{if(!data.length)return {traces:[],layout:{}};const t=data.map(d=>d.time);const o=data.map(d=>d.open);const h=data.map(d=>d.high);const l=data.map(d=>d.low);const c=data.map(d=>d.close)
-    const rows=[true,tog.RSI,tog.Stoch,tog.MACD,tog.TrendPanel].filter(Boolean).length
-    const rowIndex={price:1,rsi:tog.RSI?2:0,stoch:(tog.RSI?2:1)+(tog.Stoch?1:0),macd:0,trend:0}
-    rowIndex.macd=(tog.RSI?1:0)+(tog.Stoch?1:0)?(tog.RSI?2:1)+(tog.Stoch?1:0)+1:(tog.RSI?2:1)
-    rowIndex.trend=rows
-    const priceTrace:any={type:'candlestick',x:t,open:o,high:h,low:l,close:c,name:'Price',xaxis:pane(1).x,yaxis:pane(1).y,hoverinfo:'x+y'}
-    const tr:any[]=[priceTrace]
-    if(tog.EMAs){const e20=ema(c,20),e50=ema(c,50),e200=ema(c,200);tr.push({x:t,y:e20,type:'scatter',mode:'lines',name:'EMA20',xaxis:pane(1).x,yaxis:pane(1).y},{x:t,y:e50,type:'scatter',mode:'lines',name:'EMA50',xaxis:pane(1).x,yaxis:pane(1).y},{x:t,y:e200,type:'scatter',mode:'lines',name:'EMA200',xaxis:pane(1).x,yaxis:pane(1).y})}
-    let bb:any=null; if(tog.Bollinger){bb=bollinger(c,20,2);tr.push({x:t,y:bb.upper,type:'scatter',mode:'lines',name:'BB up',line:{color:'#a855f7'},xaxis:pane(1).x,yaxis:pane(1).y},{x:t,y:bb.mid,type:'scatter',mode:'lines',name:'BB mid',line:{color:'#f59e0b'},xaxis:pane(1).x,yaxis:pane(1).y},{x:t,y:bb.lower,type:'scatter',mode:'lines',name:'BB low',line:{color:'#a855f7'},xaxis:pane(1).x,yaxis:pane(1).y})}
-    if(tog.BBSig&&bb){const sig=bbSignal(c,bb.upper,bb.lower,1);setBadge({label:sig.label,color:sig.color})
-      const mk=(idx:number[],name:string,color:string)=>({x:idx.map(i=>t[i]),y:idx.map(i=>c[i]),type:'scatter',mode:'markers',marker:{symbol:name.includes('sell')?'triangle-down':'triangle-up',size:8,color},name,xaxis:pane(1).x,yaxis:pane(1).y})
-      tr.push(mk(sig.strongBuyIdx,'BB strong buy','#16a34a'),mk(sig.weakBuyIdx,'BB weak buy','#86efac'),mk(sig.strongSellIdx,'BB strong sell','#dc2626'),mk(sig.weakSellIdx,'BB weak sell','#fca5a5'))
-    } else setBadge(null)
-    if(tog.RSI){const rv=rsi(c,14);tr.push({x:t,y:rv,type:'scatter',mode:'lines',name:'RSI',xaxis:pane(2).x,yaxis:pane(2).y});tr.push({x:[t[0],t[t.length-1]],y:[70,70],type:'scatter',mode:'lines',name:'rsi70',xaxis:pane(2).x,yaxis:pane(2).y,showlegend:false,line:{dash:'dot',width:1}},{x:[t[0],t[t.length-1]],y:[30,30],type:'scatter',mode:'lines',name:'rsi30',xaxis:pane(2).x,yaxis:pane(2).y,showlegend:false,line:{dash:'dot',width:1}})}
-    if(tog.Stoch){const st=stoch(h,l,c,14,3);tr.push({x:t,y:st.K,type:'scatter',mode:'lines',name:'%K',xaxis:pane(3).x,yaxis:pane(3).y},{x:t,y:st.D,type:'scatter',mode:'lines',name:'%D',xaxis:pane(3).x,yaxis:pane(3).y})}
-    if(tog.MACD){const m=macd(c,12,26,9);tr.push({x:t,y:m.macd,type:'scatter',mode:'lines',name:'MACD',xaxis:pane(4).x,yaxis:pane(4).y},{x:t,y:m.signal,type:'scatter',mode:'lines',name:'Signal',xaxis:pane(4).x,yaxis:pane(4).y},{x:t,y:m.hist,type:'bar',name:'Hist',xaxis:pane(4).x,yaxis:pane(4).y,marker:{opacity:0.4}})}
-    const shapes:any[]=[]
-    if(tog.TrendPanel){const ext=extrema(h,l,10);const levels=clusterLevels([...ext.highs.map(x=>x.price),...ext.lows.map(x=>x.price)],1).slice(0,8);for(const y of levels)shapes.push(hline(y,5,'#111'))}
-    const domains:number[][]=[];const rcount=5;const active=[true,tog.RSI,tog.Stoch,tog.MACD,tog.TrendPanel];const heights=[0.55,0.12,0.12,0.12,0.09];let yTop=1;for(let i=0;i<rcount;i++){const hgt=active[i]?heights[i]:0;if(hgt>0){domains[i]=[yTop-hgt,yTop];yTop-=hgt}else domains[i]=[0,0]}
-    const layout:any={showlegend:false,margin:{l:50,r:20,t:10,b:30},xaxis:{domain:[0,1],anchor:'y',type:'date'},yaxis:{domain:domains[0],anchor:'x'},xaxis2:{domain:[0,1],anchor:'y2',type:'date'},yaxis2:{domain:domains[1]},xaxis3:{domain:[0,1],anchor:'y3',type:'date'},yaxis3:{domain:domains[2]},xaxis4:{domain:[0,1],anchor:'y4',type:'date'},yaxis4:{domain:domains[3]},xaxis5:{domain:[0,1],anchor:'y5',type:'date'},yaxis5:{domain:domains[4]},shapes}
-    return {traces:tr,layout}
-  },[data,tog.Bollinger,tog.EMAs,tog.MACD,tog.RSI,tog.Stoch,tog.TrendPanel,tog.BBSig])
+  const [ticker,setTicker] = useState<string>("AAPL");
+  const [data,setData] = useState<OHLC[]>([]);
+  const [tog,setTog] = useState({EMAs:true,Bollinger:true,RSI:true,Stoch:true,MACD:true,TrendPanel:true,BbSig:true});
+
+  useEffect(()=>{(async()=>{const d=await fetchOHLC(ticker);setData(d);})();},[ticker]);
+
+  const derived = useMemo(()=>{
+    const t = data.map(d=> (typeof d.time==="number")? new Date(d.time).toISOString() : d.time);
+    const o = data.map(d=> +d.open), h = data.map(d=> +d.high), l = data.map(d=> +d.low), c = data.map(d=> +d.close);
+    const e20 = ema(c,20), e50 = ema(c,50), e200 = ema(c,200);
+    const bands = bb(c,20,2);
+    const st = stoch(h,l,c,14,3);
+    const r = rsi(c,14);
+    const m = macd(c,12,26,9);
+    const ex = extrema(h,l,10);
+    return {t,o,h,l,c,e20,e50,e200,bands,st,r,m,ex};
+  },[data]);
+
+  const traces:any[] = [];
+  if(data.length){
+    traces.push({type:"candlestick", x:derived.t, open:derived.o, high:derived.h, low:derived.l, close:derived.c, name:"Price", xaxis:"x", yaxis:"y"});
+    if(tog.EMAs){
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.e20, name:"EMA20", xaxis:"x", yaxis:"y"});
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.e50, name:"EMA50", xaxis:"x", yaxis:"y"});
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.e200, name:"EMA200", xaxis:"x", yaxis:"y"});
+    }
+    if(tog.Bollinger){
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.bands.up, name:"BB Upper", xaxis:"x", yaxis:"y"});
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.bands.mid, name:"BB Mid", xaxis:"x", yaxis:"y"});
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.bands.lo, name:"BB Lower", xaxis:"x", yaxis:"y"});
+    }
+    if(tog.Stoch){
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.st.k, name:"%K", xaxis:"x2", yaxis:"y2"});
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.st.d, name:"%D", xaxis:"x2", yaxis:"y2"});
+    }
+    if(tog.RSI){
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.r, name:"RSI", xaxis:"x3", yaxis:"y3"});
+    }
+    if(tog.MACD){
+      traces.push({type:"bar", x:derived.t, y:derived.m.hist, name:"MACD hist", xaxis:"x4", yaxis:"y4"});
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.m.macd, name:"MACD", xaxis:"x4", yaxis:"y4"});
+      traces.push({type:"scatter", mode:"lines", x:derived.t, y:derived.m.signal, name:"Signal", xaxis:"x4", yaxis:"y4"});
+    }
+    if(tog.TrendPanel){
+      const lastIdx = [...derived.ex.hIdx.slice(-8).map(i=>({i,dir:"H" as const})), ...derived.ex.lIdx.slice(-8).map(i=>({i,dir:"L" as const}))].sort((a,b)=>a.i-b.i);
+      for(const p of lastIdx){
+        const y = p.dir==="H"? derived.h[p.i] : derived.l[p.i];
+        traces.push({type:"scatter", mode:"markers", x:[derived.t[p.i]], y:[y], marker:{size:10,symbol:p.dir==="H"?"triangle-up":"triangle-down"}, name:p.dir==="H"?"High":"Low", xaxis:"x5", yaxis:"y5"});
+        traces.push({type:"scatter", mode:"lines", x:[derived.t[0], derived.t[derived.t.length-1]], y:[y,y], name:`L${p.i}`, hoverinfo:"skip", showlegend:false, xaxis:"x5", yaxis:"y5"});
+      }
+    }
+  }
+
+  const shapes:any[] = [];
+  if(tog.RSI && data.length){
+    const x0 = derived.t[0], x1 = derived.t[derived.t.length-1];
+    shapes.push({type:"line", x0, x1, y0:70, y1:70, xref:"x3", yref:"y3"});
+    shapes.push({type:"line", x0, x1, y0:30, y1:30, xref:"x3", yref:"y3"});
+  }
+
   return (
-    <div>
-      <div className="bar">
+    <div style={{padding:"10px"}}>
+      <div style={{display:"flex", gap:12, alignItems:"center"}}>
         <strong>Market Vision Pro</strong>
-        <label><input type="checkbox" checked={tog.EMAs} onChange={e=>setTog({...tog,EMAs:e.target.checked})}/> EMAs</label>
-        <label><input type="checkbox" checked={tog.Bollinger} onChange={e=>setTog({...tog,Bollinger:e.target.checked})}/> Bollinger</label>
-        <label><input type="checkbox" checked={tog.RSI} onChange={e=>setTog({...tog,RSI:e.target.checked})}/> RSI</label>
-        <label><input type="checkbox" checked={tog.Stoch} onChange={e=>setTog({...tog,Stoch:e.target.checked})}/> Stoch</label>
-        <label><input type="checkbox" checked={tog.MACD} onChange={e=>setTog({...tog,MACD:e.target.checked})}/> MACD</label>
-        <label><input type="checkbox" checked={tog.TrendPanel} onChange={e=>setTog({...tog,TrendPanel:e.target.checked})}/> TrendPanel</label>
-        <label><input type="checkbox" checked={tog.BBSig} onChange={e=>setTog({...tog,BBSig:e.target.checked})}/> BB Signals</label>
-        <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} style={{padding:'6px 8px',border:'1px solid #ddd',borderRadius:6,width:90}}/>
-        <button onClick={()=>setTicker(ticker)} style={{padding:'6px 10px',border:'1px solid #ddd',borderRadius:6,background:'#fafafa'}}>Refresh</button>
+        <label><input type="checkbox" checked={tog.EMAs} onChange={()=>setTog({...tog,EMAs:!tog.EMAs})}/> EMAs</label>
+        <label><input type="checkbox" checked={tog.Bollinger} onChange={()=>setTog({...tog,Bollinger:!tog.Bollinger})}/> Bollinger</label>
+        <label><input type="checkbox" checked={tog.Stoch} onChange={()=>setTog({...tog,Stoch:!tog.Stoch})}/> Stoch</label>
+        <label><input type="checkbox" checked={tog.RSI} onChange={()=>setTog({...tog,RSI:!tog.RSI})}/> RSI</label>
+        <label><input type="checkbox" checked={tog.MACD} onChange={()=>setTog({...tog,MACD:!tog.MACD})}/> MACD</label>
+        <label><input type="checkbox" checked={tog.TrendPanel} onChange={()=>setTog({...tog,TrendPanel:!tog.TrendPanel})}/> TrendPanel</label>
+        <input defaultValue={ticker} onChange={(e)=>setTicker(e.currentTarget.value.toUpperCase())} style={{width:80}}/>
+        <button onClick={()=>setTicker(t=>t)}>Refresh</button>
       </div>
-      <div style={{position:'relative'}}>
-        {badge&&<div className="badge" style={{backgroundColor:badge.color}}>{badge.label}</div>}
-        <Plot data={traces.traces as any} layout={traces.layout as any} style={{height:'920px',width:'100%'}} config={{displayModeBar:true,responsive:true}} />
-      </div>
+      <Plot
+        data={traces as any}
+        layout={{
+          grid:{rows:5, columns:1, pattern:"independent", roworder:"top to bottom"},
+          height: 920,
+          margin:{l:60,r:20,t:10,b:30},
+          showlegend:false,
+          shapes,
+          yaxis:{title:"Price"},
+          yaxis2:{title:"Stoch", range:[0,100]},
+          yaxis3:{title:"RSI", range:[0,100]},
+          yaxis4:{title:"MACD"},
+          yaxis5:{title:"Trend"},
+        } as any}
+        useResizeHandler
+        style={{width:"100%"}}
+      />
     </div>
-  )
+  );
 }
