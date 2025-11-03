@@ -1,22 +1,74 @@
-import type { OHLC, Signal } from "../types";
-function sma(a:number[], n:number){const o=Array(a.length).fill(NaN);let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n) s-=a[i-n];if(i>=n-1) o[i]=s/n;}return o;}
-function stdev(a:number[], n:number){const o=Array(a.length).fill(NaN);const m=sma(a,n);let w:number[]=[];for(let i=0;i<a.length;i++){w.push(a[i]);if(w.length>n) w.shift();if(w.length===n){const mu=m[i];let v=0;for(const x of w){const d=x-mu;v+=d*d;}o[i]=Math.sqrt(v/n);}}return o;}
-export function computeBB(ohlc:OHLC, win=20, k=2, kWeak=1.5){
-  const c=ohlc.close, mid=sma(c,win), sd=stdev(c,win);
-  const up=c.map((_,i)=>mid[i]+k*sd[i]), lo=c.map((_,i)=>mid[i]-k*sd[i]);
-  const upW=c.map((_,i)=>mid[i]+kWeak*sd[i]), loW=c.map((_,i)=>mid[i]-kWeak*sd[i]);
-  const near=0.005;
-  const bs:number[]=[], bw:number[]=[], ss:number[]=[], sw:number[]=[]; let last:Signal=null;
-  for(let i=0;i<c.length;i++){
-    const p=c[i], U=up[i], L=lo[i], Uw=upW[i], Lw=loW[i];
-    if(Number.isNaN(U)||Number.isNaN(L)){bs.push(NaN);bw.push(NaN);ss.push(NaN);sw.push(NaN);continue;}
-    const nearU=Math.abs(p-U)/p<=near, nearL=Math.abs(p-L)/p<=near;
-    if(p>=U){ss.push(p);sw.push(NaN);bs.push(NaN);bw.push(NaN); last={at:i,dir:"sell",strength:"strong",label:"BB: strong sell",color:"#d93f3f"};}
-    else if(p<=L){bs.push(p);bw.push(NaN);ss.push(NaN);sw.push(NaN); last={at:i,dir:"buy",strength:"strong",label:"BB: strong buy",color:"#1a7f37"};}
-    else if(p>=Uw||nearU){sw.push(p);ss.push(NaN);bs.push(NaN);bw.push(NaN); last={at:i,dir:"sell",strength:"weak",label:"BB: weak sell",color:"#e07a7a"};}
-    else if(p<=Lw||nearL){bw.push(p);bs.push(NaN);ss.push(NaN);sw.push(NaN); last={at:i,dir:"buy",strength:"weak",label:"BB: weak buy",color:"#62c66b"};}
-    else{bs.push(NaN);bw.push(NaN);ss.push(NaN);sw.push(NaN);}
-  }
-  return {last, buyStrong:bs, buyWeak:bw, sellStrong:ss, sellWeak:sw, upper:up, middle:mid, lower:lo};
+export type BBRes = {
+  strongBuy: number[];
+  weakBuy: number[];
+  strongSell: number[];
+  weakSell: number[];
+  label: string;
+  color: string;
+};
+
+function pctNear(a: number, b: number, tol: number) {
+  if (!isFinite(a) || !isFinite(b) || b === 0) return false;
+  return Math.abs(a - b) / Math.abs(b) <= tol;
 }
-export function bbSignal(ohlc:OHLC, win=20, k=2, kWeak=1.5){ return computeBB(ohlc,win,k,kWeak).last; }
+
+/**
+ * Bollinger-Signale:
+ * - strongSell: close >= upper
+ * - weakSell:   close nahe upper (<= tol)
+ * - strongBuy:  close <= lower
+ * - weakBuy:    close nahe lower (<= tol)
+ */
+export function bbSignal(
+  close: number[],
+  upper: number[],
+  lower: number[],
+  tolPct: number = 0.01
+): BBRes {
+  const strongBuy: number[] = [];
+  const weakBuy: number[] = [];
+  const strongSell: number[] = [];
+  const weakSell: number[] = [];
+
+  const n = Math.min(close.length, upper.length, lower.length);
+  for (let i = 0; i < n; i++) {
+    const c = close[i];
+    const up = upper[i];
+    const lo = lower[i];
+    if (!isFinite(c) || !isFinite(up) || !isFinite(lo)) continue;
+
+    const nearUp = pctNear(c, up, tolPct);
+    const nearLo = pctNear(c, lo, tolPct);
+
+    if (c >= up) {
+      strongSell.push(i);
+    } else if (nearUp) {
+      weakSell.push(i);
+    }
+
+    if (c <= lo) {
+      strongBuy.push(i);
+    } else if (nearLo) {
+      weakBuy.push(i);
+    }
+  }
+
+  let label = "BB: neutral";
+  let color = "#666";
+  if (n > 0) {
+    const c = close[n - 1];
+    const up = upper[n - 1];
+    const lo = lower[n - 1];
+    if (isFinite(c) && isFinite(up) && isFinite(lo)) {
+      if (c >= up || pctNear(c, up, tolPct)) {
+        label = pctNear(c, up, tolPct) && c < up ? "BB: weak sell" : "BB: strong sell";
+        color = "#b91c1c";
+      } else if (c <= lo || pctNear(c, lo, tolPct)) {
+        label = pctNear(c, lo, tolPct) && c > lo ? "BB: weak buy" : "BB: strong buy";
+        color = "#15803d";
+      }
+    }
+  }
+
+  return { strongBuy, weakBuy, strongSell, weakSell, label, color };
+}
