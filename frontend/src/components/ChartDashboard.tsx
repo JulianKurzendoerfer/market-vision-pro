@@ -105,7 +105,7 @@ trendTraces.push({x: time, y: close, name:'', type:'scatter', mode:'lines', line
     trendTraces.push({x:plx, y:ply, type:'scatter', mode:'markers', name:'Pivot L', marker:{symbol:'triangle-down', size:8, opacity:0.7}})
   }
 
-  const priceLayout:any = {height:360, margin:{l:50,r:16,t:10,b:24}, showlegend:true}
+  const priceLayout:any = {height:360, margin:{l:50,r:16,t:10,b:24}, showlegend:false}
   const stochLayout:any = {height:140, margin:{l:50,r:16,t:10,b:24}, yaxis:{range:[0,100]}}
   const rsiLayout:any   = {height:140, margin:{l:50,r:16,t:10,b:24}, yaxis:{range:[0,100]}}
   const macdLayout:any  = {height:160, margin:{l:50,r:16,t:10,b:24}}
