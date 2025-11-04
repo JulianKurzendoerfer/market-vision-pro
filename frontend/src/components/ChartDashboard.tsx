@@ -1,3 +1,4 @@
+import { fetchOHLC } from '../lib/api';
 import React,{useEffect,useMemo,useState} from "react";
 import Plot from "react-plotly.js";
 
@@ -25,7 +26,7 @@ async function fetchOHLC(ticker:string, interval="1d", range="1y"):Promise<OHLC>
     for(const p of paths){
       try{
         const url=p(base);
-        const r=await fetch(url,{cache:"no-store",mode:"cors",credentials:"omit"});
+        const r=
         if(!r.ok) continue;
         const j=await r.json();
         const time=(j.time||j.t||j.timestamp||[]).map(toNumTime);
