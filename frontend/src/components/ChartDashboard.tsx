@@ -91,6 +91,7 @@ export default function ChartDashboard(){
   }
 
   const trendTraces:any[] = []
+trendTraces.push({x: time, y: close, name:'', type:'scatter', mode:'lines', line:{width:1}, yaxis:'y5'});
   if (tog.TrendPanel){
     for(const lvl of levels){
       trendTraces.push({x:[time[0], time[time.length-1]], y:[lvl,lvl], type:'scatter', mode:'lines', name:'', line:{width:1}, hoverinfo:'none', showlegend:false})
