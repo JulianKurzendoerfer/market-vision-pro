@@ -1,4 +1,3 @@
-import './style.css';
 import React from "react";
 import { fetchOHLCStable } from "../lib/ohlc";
  open:number[]; high:number[]; low:number[]; close:number[] }
