@@ -3,24 +3,38 @@ import Plot from "react-plotly.js";
 
 type OHLC={time:number[];open:number[];high:number[];low:number[];close:number[];volume?:number[]};
 
-function ema(arr:number[], len:number){const k=2/(len+1);let out:number[]=[];let prev=arr[0];for(let i=0;i<arr.length;i++){const v=i===0?arr[0]:(arr[i]*k+prev*(1-k));out.push(v);prev=v}return out}
-function sma(arr:number[], len:number){let out:number[]=[];let s=0;for(let i=0;i<arr.length;i++){s+=arr[i];if(i>=len)s-=arr[i-len];out.push(i>=len-1?s/len:arr[i])}return out}
-function bb(close:number[], len=20, mult=2){const basis=sma(close,len);let upper:number[]=[],lower:number[]=[];for(let i=0;i<close.length;i++){let n=Math.min(i+1,len);let mean=basis[i];let v=0;for(let j=i-n+1;j<=i;j++){const d=(close[j]-mean);v+=d*d}const st=Math.sqrt(v/Math.max(1,n));upper.push(mean+mult*st);lower.push(mean-mult*st)}return {basis,upper,lower}}
-function rsi(close:number[], len=14){let rs:number[]=[];let g=0,l=0;for(let i=1;i<close.length;i++){const ch=close[i]-close[i-1];const up=Math.max(ch,0),dn=Math.max(-ch,0);g=(g*(len-1)+up)/len;l=(l*(len-1)+dn)/len;const v=l===0?100:100-100/(1+g/l);rs.push(v)}return [NaN,...rs]}
-function stoch(high:number[],low:number[],close:number[],len=14){let k:number[]=[];for(let i=0;i<close.length;i++){const s=Math.max(0,i-len+1);let hh=-Infinity,ll=Infinity;for(let j=s;j<=i;j++){if(high[j]>hh)hh=high[j];if(low[j]<ll)ll=low[j]}k.push(((close[i]-ll)/(hh-ll||1))*100)}const d=sma(k,3);return {k,d}}
-function macd(close:number[], fast=12, slow=26, sig=9){const fastE=ema(close,fast), slowE=ema(close,slow);let m:number[]=[];for(let i=0;i<close.length;i++)m.push(fastE[i]-slowE[i]);const s=ema(m,sig);let h:number[]=[];for(let i=0;i<m.length;i++)h.push(m[i]-s[i]);return {macd:m,signal:s,hist:h}}
+function ema(a:number[],l:number){const k=2/(l+1);let o:number[]=[];let p=a[0];for(let i=0;i<a.length;i++){const v=i===0?a[0]:(a[i]*k+p*(1-k));o.push(v);p=v}return o}
+function sma(a:number[],l:number){let o:number[]=[],s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=l)s-=a[i-l];o.push(i>=l-1?s/l:a[i])}return o}
+function bb(c:number[],l=20,m=2){const b=sma(c,l);let u:number[]=[],d:number[]=[];for(let i=0;i<c.length;i++){let n=Math.min(i+1,l),mean=b[i],v=0;for(let j=i-n+1;j<=i;j++){const x=c[j]-mean;v+=x*x}const st=Math.sqrt(v/Math.max(1,n));u.push(mean+m*st);d.push(mean-m*st)}return {basis:b,upper:u,lower:d}}
+function rsi(c:number[],l=14){let r:number[]=[],g=0,h=0;for(let i=1;i<c.length;i++){const ch=c[i]-c[i-1];const up=Math.max(ch,0),dn=Math.max(-ch,0);g=(g*(l-1)+up)/l;h=(h*(l-1)+dn)/l;r.push(h===0?100:100-100/(1+g/h))}return [NaN,...r]}
+function stoch(h:number[],lo:number[],c:number[],l=14){let k:number[]=[];for(let i=0;i<c.length;i++){const s=Math.max(0,i-l+1);let hh=-Infinity,ll=Infinity;for(let j=s;j<=i;j++){if(h[j]>hh)hh=h[j];if(lo[j]<ll)ll=lo[j]}k.push(((c[i]-ll)/(hh-ll||1))*100)}const d=sma(k,3);return {k,d}}
+function macd(c:number[],f=12,s=26,sg=9){const fe=ema(c,f),se=ema(c,s);let m:number[]=[];for(let i=0;i<c.length;i++)m.push(fe[i]-se[i]);const si=ema(m,sg);let hi:number[]=[];for(let i=0;i<m.length;i++)hi.push(m[i]-si[i]);return {macd:m,signal:si,hist:hi}}
+
+function toNumTime(t:any){if(typeof t==="number")return t;const d=Date.parse(t);return isNaN(d)?t:d}
 
 async function fetchOHLC(ticker:string, interval="1d", range="1y"):Promise<OHLC>{
+  const b=(import.meta as any).env?.VITE_API_BASE||"";
+  const bases=[b,""].filter(Boolean);
   const qs=new URLSearchParams({ticker,interval,range}).toString();
-  try{
-    const r=await fetch(`/api/ohlc?${qs}`,{cache:"no-store"});
-    if(!r.ok) throw new Error(String(r.status));
-    const j=await r.json();
-    const t=j.time||j.t||[];
-    return {time:t.map((x:any)=>typeof x==="number"?x:Date.parse(x)),open:j.open,high:j.high,low:j.low,close:j.close,volume:j.volume};
-  }catch{
-    return {time:[],open:[],high:[],low:[],close:[],volume:[]};
+  const paths=[
+    (x:string)=>`${x}/api/ohlc?${qs}`,
+    (x:string)=>`${x}/ohlc?${qs}`,
+    (x:string)=>`${x}/api/ohlc/${ticker}?interval=${interval}&range=${range}`
+  ];
+  for(const base of bases){
+    for(const p of paths){
+      try{
+        const url=p(base);
+        const r=await fetch(url,{cache:"no-store",mode:"cors",credentials:"omit"});
+        if(!r.ok) continue;
+        const j=await r.json();
+        const time=(j.time||j.t||j.timestamp||[]).map(toNumTime);
+        const open=j.open||j.o, high=j.high||j.h, low=j.low||j.l, close=j.close||j.c, volume=j.volume||j.v;
+        if(time?.length && close?.length) return {time,open,high,low,close,volume};
+      }catch{}
+    }
   }
+  return {time:[],open:[],high:[],low:[],close:[],volume:[]};
 }
 
 export default function ChartDashboard(){
@@ -52,13 +66,9 @@ export default function ChartDashboard(){
   if(loading && !calc) return <div style={{padding:16}}>Lade Daten…</div>;
 
   const baseLayout=(h:number)=>({
-    height:h,
-    margin:{l:50,r:16,t:10,b:30},
-    showlegend:false,
+    height:h,margin:{l:50,r:16,t:10,b:30},showlegend:false,
     xaxis:{type:"date",tickformat:"%Y-%m-%d"},
-    paper_bgcolor:"rgba(0,0,0,0)",
-    plot_bgcolor:"rgba(0,0,0,0)",
-    font:{size:12}
+    paper_bgcolor:"rgba(0,0,0,0)",plot_bgcolor:"rgba(0,0,0,0)",font:{size:12}
   } as Partial<Plotly.Layout>);
 
   const priceTraces=calc?[
