@@ -1,15 +1,10 @@
-export type OHLC={time:number[];open:number[];high:number[];low:number[];close:number[]};
-async function tryPath(u:string){try{const r=await fetch(u,{cache:'no-store'});if(r.ok){const j=await r.json();if(j&&j.time&&j.time.length)return j}}catch{} return null}
-export async function fetchOHLC(ticker:string,interval='1d',range='1y'):Promise<OHLC>{
-  const qs='ticker='+encodeURIComponent(ticker)+'&interval='+interval+'&range='+range;
-  const paths=['/api/ohlc?'+qs,'/ohlc?'+qs,'/data/ohlc?'+qs];
-  for(const u of paths){const j=await tryPath(u); if(j) return j}
-  // Fallback (nur wenn Backend nichts liefert)
-  const n=260, day=864e5, now=Date.now();
-  const time=Array.from({length:n},(_,i)=>now-(n-i)*day);
-  let px=200; const open:number[]=[],high:number[]=[],low:number[]=[],close:number[]=[];
-  for(let i=0;i<n;i++){const drift=Math.sin(i/22)*0.7+(Math.random()-0.5)*0.6; const c=Math.max(40,px+drift);
-    const o=c+(Math.random()-0.5)*0.8, h=Math.max(o,c)+Math.random()*1.1, l=Math.min(o,c)-Math.random()*1.1;
-    open.push(+o.toFixed(2)); close.push(+c.toFixed(2)); high.push(+h.toFixed(2)); low.push(+l.toFixed(2)); px=c;}
-  return {time,open,high,low,close};
+
+export type OHLC={t:number[];o:number[];h:number[];l:number[];c:number[];v?:number[]};
+const BASE=(import.meta as any).env.VITE_API_BASE||'';
+function utcMidnight(d:Date){return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));}
+function rangeToWindow(range:string,interval:string){const end=utcMidnight(new Date());const start=new Date(end);if(range==='6m')start.setUTCMonth(start.getUTCMonth()-6);else if(range==='3m')start.setUTCMonth(start.getUTCMonth()-3);else if(range==='2y')start.setUTCFullYear(start.getUTCFullYear()-2);else start.setUTCFullYear(start.getUTCFullYear()-1);return {start,end};}
+function normalize(j:any):OHLC{const t=(j.t||j.time||[]).map((x:any)=>typeof x==='string'?Date.parse(x):+x);const o=(j.o||j.open||[]).map((x:any)=>+x);const h=(j.h||j.high||[]).map((x:any)=>+x);const l=(j.l||j.low||[]).map((x:any)=>+x);const c=(j.c||j.close||[]).map((x:any)=>+x);const v=(j.v||j.volume||[])?.map((x:any)=>+x)||undefined;const m=new Map<number,number>();for(let i=0;i<t.length;i++){const ts=+t[i];if(Number.isFinite(ts))m.set(ts,i);}const ts=[...m.keys()].sort((a,b)=>a-b);const out:OHLC={t:[],o:[],h:[],l:[],c:[],v:v?[]:undefined};for(const tsVal of ts){const i=m.get(tsVal)!;out.t.push(tsVal);out.o.push(o[i]);out.h.push(h[i]);out.l.push(l[i]);out.c.push(c[i]);if(out.v)(out.v as number[]).push(v![i]||0);}return out;}
+export async function fetchOHLCStable(ticker:string,interval:string,range:string){const {start,end}=rangeToWindow(range,interval);const qs=new URLSearchParams({ticker,interval,start:start.toISOString(),end:end.toISOString()}).toString();const url=`${BASE}/api/ohlc?${qs}`;const key=`ohlc:${ticker}:${interval}:${range}`;let cached:null|OHLC=null;try{cached=JSON.parse(localStorage.getItem(key)||'null');}catch{};const r=await fetch(url,{cache:'no-store'}).catch(()=>null);if(r&&r.ok){const j=await r.json();const d=normalize(j);if(d.t.length){localStorage.setItem(key,JSON.stringify(d));return {data:d,source:'api' as const};}}
+if(cached)return {data:cached,source:'cache' as const};
+throw new Error('no-data');
 }
